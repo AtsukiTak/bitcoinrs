@@ -1,11 +1,6 @@
 colorscheme hybrid
 imap <C-h> <Left>
 imap <C-l> <Right>
-inoremap " ""<LEFT>
-inoremap ' ''<LEFT>
-inoremap ( ()<LEFT>
-inoremap [ []<LEFT>
-inoremap { {}<LEFT>
 autocmd InsertEnter,InsertLeave * set cursorline!
 let g:neocomplcache_enable_at_startup = 1
 let g:netrw_alto = 1
@@ -25,7 +20,6 @@ noremap <leader>n :bn<CR>
 noremap <leader>p :bp<CR>
 noremap! <C-j> <esc>
 runtime macros/matchit.vim
-set smartindent
 set autoread
 set background=dark
 set enc=utf8
