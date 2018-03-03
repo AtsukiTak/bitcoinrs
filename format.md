@@ -6,7 +6,7 @@
 ### ブロック情報取得API [POST]
  
 #### 処理概要  -- (2)
- 
+a 
 * 指定したbitcoinaddressの情報を返す。
 * bitcoinaddress必須。指定がない場合、BadRequest(Response 300)を返す。
  
