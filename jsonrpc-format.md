@@ -13,7 +13,7 @@
       {
         "jsonrpc": "2.0",
           "method": "notification",
-          "params": {"BitcoinAddress";"1LeWWL94L3Nu7vf7mJvUfETnFpgMD8rs7U"},
+          "params": {"taransation_id";"1LeWWL94L3Nu7vf7mJvUfETnFpgMD8rs7U"},
           "id": 1
       }
  <--
@@ -44,3 +44,7 @@
           "id": 2
       }
 ```
+no content
+push confirmation 
+125kb
+get transaciton apo と つなぎ込みの部分
