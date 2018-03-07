@@ -38,7 +38,7 @@
  <--
       {
         "jsonrpc": "2.0",
-          "result":{ "SumOfUtxo":[1,2,3,4,5,6] } ,
+          "result":{ "SumOfUtxo": 0.00001000  } ,
           "params": {"BitcoinAddress_kabukomu";"1LeWWL94L3Nu7vf7mJvUfETnFpgMD8rs7U",
                      "BitcoinAddress_target";" 	1F1tAaz5x1HUXrCNLbtMDqcw6o5GNn4xqX"},
           "id": 2
