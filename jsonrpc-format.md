@@ -5,7 +5,8 @@
 ### 処理概要  
 
 + RPCcontent:
-  + realtime notification
+```
+   realtime notification
     --> data sent to Server
     <-- data sent to Client
  -->
@@ -23,7 +24,7 @@
           "id": 2
       }
 
-  + result of UTXO
+   result of UTXO
     --> data sent to Server
     <-- data sent to Client
  -->
@@ -42,3 +43,4 @@
                      "BitcoinAddress_target";" 	1F1tAaz5x1HUXrCNLbtMDqcw6o5GNn4xqX"},
           "id": 2
       }
+```
