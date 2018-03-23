@@ -1,4 +1,9 @@
 Simple Bitcoin network observer
 ===
 
-[API](./API.md)
+It only supports two features
+
+1. get transaction status
+2. get address utxos
+
+API document is [here](./API.md)
