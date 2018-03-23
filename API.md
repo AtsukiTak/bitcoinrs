@@ -4,7 +4,7 @@ Bitcoin observing API
 There are two kind of API
 
 1. [get transaction status](#get_transaction_status)
-2. [get address utxos](#get_address utxos)
+2. [get address utxos](#get_address_utxos)
 
 ## get transaction status
 
