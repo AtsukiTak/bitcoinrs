@@ -148,6 +148,9 @@ This API does not look up blocks which is 5000 blocks older than latest one.
             "amount": {
               "description": "Amount of btc",
               "type": "string"
+            },
+            "confirmation": {
+              "type": "number"
             }
           }
         }
