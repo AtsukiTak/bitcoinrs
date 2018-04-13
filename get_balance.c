@@ -75,7 +75,7 @@ int main (int argc, char *argv[])
     // just for test
     printf("Request:\n%s\n", message);
 
-    // Create socket and handles errors
+    // Create socket and handle errors
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("Error: Cannot open socket");
         exit(1);
@@ -122,7 +122,7 @@ int main (int argc, char *argv[])
 
     /* TODO: Send the given request to bitcoid(?) */
 
-    /* TODO: Send the resonse from bitcoind(?) to client */
+    /* TODO: Send the response from bitcoind(?) to client */
 
     // Close the socket
     close(sockfd);
