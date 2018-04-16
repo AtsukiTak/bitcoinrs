@@ -26,12 +26,12 @@ int main (int argc, char *argv[])
     // hostent structure is basically a linked-list of addresses
     struct hostent *server;
     struct sockaddr_in serv_addr;
-    int sockfd, bytes, received, total, message_size = 0;
+    int sockfd, newsockfd, bytes, received, total, message_size = 0;
     char *message, request[2048];
 
     // If the number of parameter is not eonugh, exit the function
     if (argc < 5) {
-        puts("Parameters: <method> <host> <port> <path> [<data> [<headers>]]");
+        puts("Parameters should be\n\t<method> <host> <port> <path> [<data> [<headers>]]");
         exit(1);
     }
 
@@ -75,9 +75,9 @@ int main (int argc, char *argv[])
     // just for test
     printf("Request:\n%s\n", message);
 
-    // Create socket and handle errors
+    // Create a socket
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        perror("Error: Cannot open socket");
+        perror("Error: Cannot open a socket");
         exit(1);
     }
 
@@ -93,10 +93,23 @@ int main (int argc, char *argv[])
     serv_addr.sin_port = htons(portNum);
     memcpy(&serv_addr.sin_addr.s_addr, server->h_addr, server->h_length);
 
-    // Connect the socket
-    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-        perror("Error: Cannot connect to the socket");
+    // Bind to the socket address
+    if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
+        perror("Error: Cannot bind the socket");
         exit(1);
+    }
+
+    // Listen on sockfd
+    if ((listen(sockfd, 10)) == -1) {
+        perror("Error: Cannot listen on the socket");
+        exit(1);
+    }
+
+    // Accept the client connection
+    int addr_size = sizeof(serv_addr);
+    if ((newsockfd = accept(sockfd, (struct sockaddr *)&serv_addr, &addr_size)) < 0) {
+      perror("Error: Cannot accept connection from the client");
+      exit(1);
     }
 
     // Receive the request
@@ -122,7 +135,7 @@ int main (int argc, char *argv[])
 
     /* TODO: Send the given request to bitcoid(?) */
 
-    /* TODO: Send the response from bitcoind(?) to client */
+    /* TODO: Send the response from bitcoind(?) to client (using write) */
 
     // Close the socket
     close(sockfd);
