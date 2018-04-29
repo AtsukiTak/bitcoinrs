@@ -1,3 +1,10 @@
+// Reference: https://github.com/serde-rs/json
+
+/*
+ * extern crate serde;
+ * extern crate serde_json;
+ */
+
 use std::thread;
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -22,6 +29,23 @@ impl<F: FnOnce()> FnBox for F {
 }
 
 type Job = Box<FnBox + Send + 'static>;
+
+#[derive(Serialize, Deserialize)]
+pub struct GetBalance_Request {
+    addresses: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct GetBalance_Reponse {
+    address: String,
+    utxos: Vec<utxo>,
+}
+
+struct utxo {
+    txid: u64,
+    index: u64,
+    amount: f64,
+}
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
