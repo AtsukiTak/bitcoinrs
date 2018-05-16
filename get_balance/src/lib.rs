@@ -1,10 +1,39 @@
 // Reference: https://github.com/serde-rs/json
 
+#[macro_use] extern crate failure_derive;
+#[macro_use] extern crate lazy_static;
+#[macro_use] extern crate derive_getters;
+#[macro_use] extern crate log;
+#[macro_use] extern crate serde_derive;
+extern crate serde;
+extern crate serde_json;
+extern crate failure;
+extern crate futures;
+extern crate dotenv;
+extern crate iron;
+extern crate hyper_openssl;
+extern crate chrono;
+extern crate jsonrpc_core;
+extern crate protobuf;
+extern crate grpcio;
+
+extern crate precision;
+extern crate market_types;
+extern crate client_service_proto;
+extern crate hmac_authenticator_proto;
+
+pub mod config;
+pub mod iron_service;
+pub mod jsonrpc_handlers;
+pub mod model;
+
+
 /*
  * extern crate serde;
  * extern crate serde_json;
  */
 
+/*
 use std::thread;
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -101,4 +130,4 @@ impl Worker {
         }
     }
 }
-
+*/
