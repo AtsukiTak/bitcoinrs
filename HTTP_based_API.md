@@ -1,4 +1,4 @@
-Bitcoin observing API
+HTTP based API
 ===
 
 There are two kind of API
@@ -8,13 +8,15 @@ There are two kind of API
 
 ## get transaction status
 
-Get status of transactions listed on request json.
+リクエストされたトランザクションの状態を取得します。
 
-Transaction status consists of
+トランザクションの状態は、以下の要素で構成されます。
 
 - confirmation
 
-This API does not look up blocks which is 5000 blocks older than latest one.
+#### Note
+
+このAPIは5000ブロック(約１ヶ月分)を超えるブロックを監視対象としません。
 
 ### Request
 
@@ -28,7 +30,7 @@ This API does not look up blocks which is 5000 blocks older than latest one.
     "type": "array",
     "items": {
       "description": "Bitcoin transaction id",
-      "type": "string"  
+      "type": "string"
     }
 }
 ```
@@ -60,7 +62,7 @@ This API does not look up blocks which is 5000 blocks older than latest one.
         "description": "The number of blocks chained after the block.",
         "type": "number"
       }
-    }  
+    }
   }
 }
 ```
@@ -82,13 +84,15 @@ This API does not look up blocks which is 5000 blocks older than latest one.
 
 #### Note
 
-Even if given transaction id is invalid, no error is returned.
-We just exclude it from response.
+指定されたトランザクションIDに不正なものが含まれていたとしても、それに関するエラーは報告されません。
 
 ## get address utxos
 
-Get UTXOs related to given address.
-This API does not look up blocks which is 5000 blocks older than latest one.
+指定されたアドレスのUTXOを取得します。
+
+#### Note
+
+このAPIは5000ブロック(約１ヶ月分)を超えるブロックを監視対象としません。
 
 ### Request
 
@@ -188,5 +192,4 @@ This API does not look up blocks which is 5000 blocks older than latest one.
 
 #### Note
 
-Even if request contains invalid Bitcoin address, no error is returned.
-We just exclude it from response.
+指定されたアドレスに不正なものが含まれていたとしても、それに関するエラーは報告されません。
