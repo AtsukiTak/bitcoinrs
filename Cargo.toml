@@ -1,0 +1,6 @@
+[package]
+name = "bitcoin_observer"
+version = "0.0.0"
+authors = ["AtsukiTak <takatomgoo@gmail.com>"]
+
+[dependencies]
