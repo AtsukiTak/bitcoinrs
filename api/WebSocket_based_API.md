@@ -1,11 +1,20 @@
 WebSocket based API
 ===
 
+監視したいオブジェクトの種類に応じて使用するAPIが変わります。
+
+1. [observe transaction status](#observe_transaction_status)
+2. [observe address utxo](#observe_address_utxo)
+
 ## observe transaction status
 
 トランザクションの状態を監視します。
+基本的なオブジェクトの構成はHTTP based APIと同じです。
 
 ### Client to Server
+
+クライアントからサーバに監視対象の追加依頼をします。
+一度に複数の監視対象を追加することができます。
 
 ```json
 {
@@ -28,6 +37,9 @@ WebSocket based API
 
 ### Server to Client
 
+サーバからクライアントに通知を行います。
+一度に複数の通知が行われます。
+
 ```Json
 {
   "$schema": "http://json-schema.org/schema#",
@@ -44,6 +56,10 @@ WebSocket based API
       "confirmation": {
         "description": "The number of blocks chained after the block.",
         "type": "number"
+      },
+      "mined_block": {
+        "description": "A hash of block which contains the transaction",
+        "typ": "string"
       }
     }
   }
@@ -56,11 +72,13 @@ WebSocket based API
 [
   {
     "txid": "faketransactionid1",
-    "confirmation": 0
+    "confirmation": 0,
+    "mined_block": "0000000000000000000000fakeblockhash1"
   },
   {
     "txid": "faketransactionid2",
-    "confirmation": 8
+    "confirmation": 8,
+    "mined_block": "0000000000000000000000fakeblockhash2"
   }
 ]
 ```
@@ -70,6 +88,9 @@ WebSocket based API
 アドレスの残高を監視します。
 
 ### Client to Server
+
+クライアントからサーバに監視対象の追加依頼をします。
+一度に複数の監視対象を追加することができます。
 
 ```Json
 {
@@ -91,6 +112,9 @@ WebSocket based API
 ```
 
 ### Server to Client
+
+サーバからクライアントに通知を行います。
+一度に複数の通知が行われます。
 
 ```Json
 {
@@ -126,6 +150,9 @@ WebSocket based API
             },
             "confirmation": {
               "type": "number"
+            },
+            "mined_block": {
+              "type": "string"
             }
           }
         }
@@ -145,12 +172,16 @@ WebSocket based API
       {
         "txid": "faketransactionid1",
         "index": 1,
-        "amount": "0.00042"
+        "amount": "0.00042",
+        "confirmation": 2,
+        "mined_block": "00000000000fakeblockhash1"
       },
       {
         "txid": "faketransactionid2",
         "index": 0,
-        "amount": "0.0000003"
+        "amount": "0.0000003",
+        "confirmation": 42,
+        "mined_block": "00000000000fakeblockhash2"
       }
     ]
   },

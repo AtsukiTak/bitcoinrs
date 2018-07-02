@@ -1,7 +1,7 @@
 HTTP based API
 ===
 
-There are two kind of API
+状態を取得したいオブジェクトの種類に応じて使用するAPIが変わります。
 
 1. [get transaction status](#get_transaction_status)
 2. [get address utxos](#get_address_utxos)
@@ -9,14 +9,12 @@ There are two kind of API
 ## get transaction status
 
 リクエストされたトランザクションの状態を取得します。
-
-トランザクションの状態は、以下の要素で構成されます。
-
-- confirmation
+取得できるトランザクションの状態については、Responseをご参照ください。
 
 #### Note
 
 このAPIは5000ブロック(約１ヶ月分)を超えるブロックを監視対象としません。
+また、指定されたトランザクションIDに不正なものが含まれていたとしても、それに関するエラーは報告されません。
 
 ### Request
 
@@ -61,6 +59,10 @@ There are two kind of API
       "confirmation": {
         "description": "The number of blocks chained after the block.",
         "type": "number"
+      },
+      "mined_block": {
+        "description" "A hash of block which contains the transaction",
+        "type": "string"
       }
     }
   }
@@ -73,26 +75,28 @@ There are two kind of API
 [
   {
     "txid": "faketransactionid1",
-    "confirmation": 0
+    "confirmation": 0,
+    "mined_block": "0000000000000000fakeblockhash1"
   },
   {
     "txid": "faketransactionid2",
-    "confirmation": 8
+    "confirmation": 8,
+    "mined_block": "0000000000000000fakeblockhash2"
   }
 ]
 ```
 
-#### Note
-
-指定されたトランザクションIDに不正なものが含まれていたとしても、それに関するエラーは報告されません。
 
 ## get address utxos
 
 指定されたアドレスのUTXOを取得します。
+UTXOの合計が、アドレスの残高となります。
+取得できるUTXOの状態については、Responseをご参照ください。
 
 #### Note
 
 このAPIは5000ブロック(約１ヶ月分)を超えるブロックを監視対象としません。
+また、指定されたアドレスに不正なものが含まれていたとしても、それに関するエラーは報告されません。
 
 ### Request
 
@@ -146,7 +150,7 @@ There are two kind of API
               "type": "string"
             },
             "index": {
-              "description": "Index at where transaction output is contained",
+              "description": "Index where transaction output is contained",
               "type": "number"
             },
             "amount": {
@@ -155,6 +159,9 @@ There are two kind of API
             },
             "confirmation": {
               "type": "number"
+            },
+            "mined_block": {
+              "type": "string"
             }
           }
         }
@@ -189,7 +196,3 @@ There are two kind of API
   }
 ]
 ```
-
-#### Note
-
-指定されたアドレスに不正なものが含まれていたとしても、それに関するエラーは報告されません。
