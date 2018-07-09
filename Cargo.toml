@@ -6,11 +6,6 @@ authors = ["AtsukiTak <takatomgoo@gmail.com>"]
 [dependencies]
 bitcoin = "0.13"
 
-futures = "0.1"
-tokio = "0.1"
-tokio-codec = "0.1"
-bytes = "0.4"
-
 log = "0.4"
 error-chain = "0.12"
 
