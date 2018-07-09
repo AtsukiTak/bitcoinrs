@@ -1,44 +1,54 @@
-use std::{io::Cursor, net::SocketAddr};
-use bitcoin::network::{constants::{magic, Network}, encodable::ConsensusDecodable,
-                       message::{NetworkMessage, RawNetworkMessage},
-                       serialize::{serialize, RawDecoder}};
-use bitcoin::util::Error as BitcoinError;
-use futures::{Future, Sink, Stream};
-use tokio::net::TcpStream;
-use tokio_codec::{Decoder, Encoder, Framed};
-use bytes::BytesMut;
+use std::net::SocketAddr;
+use bitcoin::network::{address::Address, constants::Network, message::NetworkMessage,
+                       socket::Socket};
 
 use error::Error;
 
+#[derive(Clone)]
 pub struct SyncSocket {
-    // Sometime, socket is needed to be taken temporary. e.g. send_msg
-    socket: Option<Framed<TcpStream, BitcoinNetworkCodec>>,
-
-    remote_addr: SocketAddr,
-    local_addr: SocketAddr,
+    socket: Socket,
+    remote_addr: Address,
+    local_addr: Address,
 }
 
 impl SyncSocket {
-    pub fn establish(addr: &SocketAddr, network: Network) -> Result<SyncSocket, Error> {
-        let socket = TcpStream::connect(addr).wait()?;
-        let local_addr = socket.local_addr()?;
-        let codec = BitcoinNetworkCodec::new(network);
+    pub fn open(addr: &SocketAddr, network: Network) -> Result<SyncSocket, Error> {
+        let mut socket = Socket::new(network);
+        socket.connect(format!("{}", addr.ip()).as_str(), addr.port())?;
+        let remote_addr = socket.receiver_address()?;
+        let local_addr = socket.sender_address()?;
         Ok(SyncSocket {
-            socket: Some(codec.framed(socket)),
-            remote_addr: addr.clone(),
+            socket: socket,
+            remote_addr: remote_addr,
             local_addr: local_addr,
         })
     }
 
+    pub fn remote_addr(&self) -> &Address {
+        &self.remote_addr
+    }
+
+    pub fn local_addr(&self) -> &Address {
+        &self.local_addr
+    }
+
+    pub fn user_agent(&self) -> &str {
+        self.socket.user_agent.as_str()
+    }
+
     pub fn send_msg(&mut self, msg: NetworkMessage) -> Result<(), Error> {
-        info!("Send new msg to {} : {:?}", self.remote_addr, msg);
-        let socket = self.socket.take().unwrap();
-        let socket = socket.send(msg).wait()?;
-        self.socket = Some(socket);
-        Ok(())
+        info!("Send new msg to {:?} : {:?}", self.remote_addr, msg);
+        Ok(self.socket.send_message(msg)?)
+    }
+
+    pub fn recv_msg(&mut self) -> Result<NetworkMessage, Error> {
+        let msg = self.socket.receive_message()?;
+        debug!("Receive a new msg from {:?} : {:?}", self.remote_addr, msg);
+        Ok(msg)
     }
 }
 
+/*
 struct BitcoinNetworkCodec {
     magic: u32,
 }
@@ -107,3 +117,4 @@ impl Encoder for BitcoinNetworkCodec {
         Ok(())
     }
 }
+*/

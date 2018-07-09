@@ -9,4 +9,5 @@ extern crate log;
 extern crate error_chain;
 
 pub mod socket;
+pub mod connection;
 pub mod error;
