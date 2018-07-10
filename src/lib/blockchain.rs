@@ -21,6 +21,8 @@ impl BlockChain {
     }
 
     pub fn try_add_block(&mut self, block: Block) -> Result<(), InvalidBlock> {
+        // TODO : Check PoW of given block
+
         if let Some(stabled) = self.unstable_chain.try_add_block(block)? {
             self.stable_chain.add_block(stabled);
         }
@@ -102,20 +104,20 @@ impl BlockTree {
 
             // If there is node wihch has enough confirmation,
             if let Some(almost_stable) = find_prior_node(new_node, ENOUGH_CONFIRMATION) {
-                let stabled_node_ptr = self.head.clone();
+                let stabled_node_ptr = self.head;
                 let stabled_node = stabled_node_ptr.as_ref().unwrap();
 
                 // drop outdated nodes
                 for next in stabled_node.nexts.iter() {
                     if *next != almost_stable {
-                        drop_with_sub_node(next.clone());
+                        drop_with_sub_node(*next);
                     }
                 }
 
                 // move almost stable node to a new head
                 self.head = almost_stable;
 
-                // return head node as stabled one
+                // return head node's block as stabled block
                 let block = stabled_node.block.clone();
                 drop(Box::from_raw(stabled_node_ptr));
                 return Ok(Some(StabledBlock(block)));
@@ -124,6 +126,12 @@ impl BlockTree {
 
         // Successfully added a new block but no stabled block is created.
         Ok(None)
+    }
+}
+
+impl Drop for BlockTree {
+    fn drop(&mut self) {
+        unsafe { drop_with_sub_node(self.head) };
     }
 }
 
