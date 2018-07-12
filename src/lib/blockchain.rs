@@ -28,6 +28,12 @@ impl BlockChain {
         }
         Ok(())
     }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a StoredBlock> {
+        let unstable_blocks = self.unstable_chain.iter();
+        let stable_blocks = self.stable_chain.blocks.iter();
+        stable_blocks.chain(unstable_blocks)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -88,6 +94,10 @@ impl UnstableBlockChain {
         debug!("Try to add a new block");
 
         self.tree.try_add(block)
+    }
+
+    fn iter(&self) -> BlockTreeIter {
+        self.tree.iter()
     }
 }
 
@@ -150,6 +160,12 @@ impl BlockTree {
 
         // Successfully added a new block but no stabled block is created.
         Ok(None)
+    }
+
+    fn iter(&self) -> BlockTreeIter {
+        BlockTreeIter {
+            next_node: Some(unsafe { self.head.as_ref().unwrap() }),
+        }
     }
 }
 
@@ -217,4 +233,40 @@ unsafe fn drop_with_sub_node(node_ptr: *mut BlockTreeNode) {
         drop_with_sub_node(*next);
     }
     drop(Box::from_raw(node_ptr));
+}
+
+pub struct BlockTreeIter<'a> {
+    next_node: Option<&'a BlockTreeNode>,
+}
+
+impl<'a> Iterator for BlockTreeIter<'a> {
+    type Item = &'a StoredBlock;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let node = self.next_node?;
+
+        self.next_node = unsafe { search_next_iter_node(node) };
+
+        Some(&node.block)
+    }
+}
+
+unsafe fn search_next_iter_node(node: &BlockTreeNode) -> Option<&BlockTreeNode> {
+    node.nexts
+        .iter()
+        .max_by_key(|ptr| max_child_len(**ptr))
+        .map(|ptr| ptr.as_ref().unwrap())
+}
+
+// Make sure `node_ptr` is not null
+unsafe fn max_child_len(node_ptr: *mut BlockTreeNode) -> usize {
+    node_ptr
+        .as_ref()
+        .unwrap()
+        .nexts
+        .iter()
+        .map(|ptr| max_child_len(*ptr))
+        .max()
+        .map(|max| max + 1)
+        .unwrap_or(0)
 }
