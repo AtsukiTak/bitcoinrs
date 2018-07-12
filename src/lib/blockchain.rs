@@ -1,4 +1,4 @@
-use bitcoin::blockdata::block::Block;
+use bitcoin::blockdata::block::{Block, BlockHeader};
 use bitcoin::network::serialize::BitcoinHash;
 use bitcoin::util::hash::Sha256dHash;
 
@@ -13,26 +13,50 @@ pub struct BlockChain {
 pub struct InvalidBlock;
 
 impl BlockChain {
-    pub fn with_genesis(block: Block) -> BlockChain {
+    pub fn with_genesis(block: StoredBlock) -> BlockChain {
         BlockChain {
             stable_chain: StableBlockChain::new(),
             unstable_chain: UnstableBlockChain::with_genesis(block),
         }
     }
 
-    pub fn try_add_block(&mut self, block: Block) -> Result<(), InvalidBlock> {
+    pub fn try_add(&mut self, block: StoredBlock) -> Result<(), InvalidBlock> {
         // TODO : Check PoW of given block
 
-        if let Some(stabled) = self.unstable_chain.try_add_block(block)? {
+        if let Some(stabled) = self.unstable_chain.try_add(block)? {
             self.stable_chain.add_block(stabled);
         }
         Ok(())
     }
 }
 
+#[derive(Clone)]
+pub enum StoredBlock {
+    HeaderOnly(BlockHeader),
+    FullBlock(Block),
+}
+
+impl StoredBlock {
+    pub fn header(&self) -> &BlockHeader {
+        match self {
+            &StoredBlock::HeaderOnly(ref header) => header,
+            &StoredBlock::FullBlock(ref block) => &block.header,
+        }
+    }
+}
+
+impl BitcoinHash for StoredBlock {
+    fn bitcoin_hash(&self) -> Sha256dHash {
+        match self {
+            &StoredBlock::HeaderOnly(ref header) => header.bitcoin_hash(),
+            &StoredBlock::FullBlock(ref block) => block.bitcoin_hash(),
+        }
+    }
+}
+
 /// Chain of blocks which is confirmed enough.
 struct StableBlockChain {
-    blocks: Vec<Block>,
+    blocks: Vec<StoredBlock>,
 }
 
 impl StableBlockChain {
@@ -46,7 +70,7 @@ impl StableBlockChain {
 }
 
 /// Just make sure that given Block is returned by `UnstableBlockChain::try_add_block`.
-struct StabledBlock(Block);
+struct StabledBlock(StoredBlock);
 
 /// Chain of blocks which is **NOT** confirmed enough.
 struct UnstableBlockChain {
@@ -54,16 +78,16 @@ struct UnstableBlockChain {
 }
 
 impl UnstableBlockChain {
-    fn with_genesis(block: Block) -> UnstableBlockChain {
+    fn with_genesis(block: StoredBlock) -> UnstableBlockChain {
         UnstableBlockChain {
             tree: BlockTree::with_genesis(block),
         }
     }
 
-    fn try_add_block(&mut self, block: Block) -> Result<Option<StabledBlock>, InvalidBlock> {
+    fn try_add(&mut self, block: StoredBlock) -> Result<Option<StabledBlock>, InvalidBlock> {
         debug!("Try to add a new block");
 
-        self.tree.try_add_block(block)
+        self.tree.try_add(block)
     }
 }
 
@@ -74,14 +98,14 @@ struct BlockTree {
 struct BlockTreeNode {
     prev: Option<*mut BlockTreeNode>,
     nexts: Vec<*mut BlockTreeNode>,
-    block: Block,
+    block: StoredBlock,
 
     // Cache to reduce computation
     block_hash: Sha256dHash,
 }
 
 impl BlockTree {
-    fn with_genesis(block: Block) -> BlockTree {
+    fn with_genesis(block: StoredBlock) -> BlockTree {
         let node = BlockTreeNode {
             prev: None,
             nexts: vec![],
@@ -93,11 +117,11 @@ impl BlockTree {
         }
     }
 
-    fn try_add_block(&mut self, block: Block) -> Result<Option<StabledBlock>, InvalidBlock> {
+    fn try_add(&mut self, block: StoredBlock) -> Result<Option<StabledBlock>, InvalidBlock> {
         unsafe {
             // Search prev block of given block
             let node =
-                find_node_by_hash(self.head, &block.header.prev_blockhash).ok_or(InvalidBlock)?;
+                find_node_by_hash(self.head, &block.header().prev_blockhash).ok_or(InvalidBlock)?;
 
             // Append given block to prev node
             let new_node = append_block_to_node(node, block);
@@ -142,7 +166,7 @@ impl BlockTreeNode {
 }
 
 // Make sure `node` is not null
-unsafe fn append_block_to_node(node: *mut BlockTreeNode, block: Block) -> *mut BlockTreeNode {
+unsafe fn append_block_to_node(node: *mut BlockTreeNode, block: StoredBlock) -> *mut BlockTreeNode {
     let new_node = BlockTreeNode {
         prev: Some(node.clone()),
         nexts: vec![],
