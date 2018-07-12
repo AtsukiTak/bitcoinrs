@@ -30,7 +30,7 @@ impl BlockChain {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StoredBlock {
     HeaderOnly(BlockHeader),
     FullBlock(Block),
