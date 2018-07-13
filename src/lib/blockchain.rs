@@ -29,6 +29,14 @@ impl BlockChain {
         Ok(())
     }
 
+    pub fn try_add_header(&mut self, header: BlockHeader) -> Result<(), InvalidBlock> {
+        self.try_add(StoredBlock::header_only(header))
+    }
+
+    pub fn try_add_block(&mut self, block: Block) -> Result<(), InvalidBlock> {
+        self.try_add(StoredBlock::full_block(block))
+    }
+
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a StoredBlock> {
         let unstable_blocks = self.unstable_chain.iter();
         let stable_blocks = self.stable_chain.blocks.iter();
