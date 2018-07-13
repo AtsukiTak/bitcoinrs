@@ -34,6 +34,10 @@ impl BlockChain {
         let stable_blocks = self.stable_chain.blocks.iter();
         stable_blocks.chain(unstable_blocks)
     }
+
+    pub fn to_vec(&self) -> Vec<&StoredBlock> {
+        self.iter().collect()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
