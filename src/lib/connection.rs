@@ -4,6 +4,8 @@ use bitcoin::network::{constants, message::NetworkMessage, message_network::Vers
 use socket::SyncSocket;
 use error::{Error, ErrorKind};
 
+/// Connection between two peers.
+/// Connection handshake is handled in this layer.
 pub struct Connection {
     socket: SyncSocket,
 
@@ -43,6 +45,14 @@ impl Connection {
             remote_version_msg: remote_version_msg,
             local_version_msg: local_version_msg,
         })
+    }
+
+    pub fn send_msg(&mut self, msg: NetworkMessage) -> Result<(), Error> {
+        self.socket.send_msg(msg)
+    }
+
+    pub fn recv_msg(&mut self) -> Result<NetworkMessage, Error> {
+        self.socket.recv_msg()
     }
 }
 
