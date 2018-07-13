@@ -20,6 +20,10 @@ impl BlockChain {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.stable_chain.len() + self.unstable_chain.len()
+    }
+
     pub fn try_add(&mut self, block: StoredBlock) -> Result<&StoredBlock, InvalidBlock> {
         // TODO : Check PoW of given block
 
@@ -38,7 +42,8 @@ impl BlockChain {
         self.try_add(StoredBlock::full_block(block))
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a StoredBlock> {
+    // Genesis block is first
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a StoredBlock> + DoubleEndedIterator {
         let unstable_blocks = self.unstable_chain.iter();
         let stable_blocks = self.stable_chain.blocks.iter();
         stable_blocks.chain(unstable_blocks)
@@ -46,6 +51,10 @@ impl BlockChain {
 
     pub fn to_vec(&self) -> Vec<&StoredBlock> {
         self.iter().collect()
+    }
+
+    pub fn latest_block(&self) -> &StoredBlock {
+        self.iter().rev().next().unwrap() // since there always genesis block
     }
 }
 
@@ -74,10 +83,7 @@ impl StoredBlock {
 
 impl BitcoinHash for StoredBlock {
     fn bitcoin_hash(&self) -> Sha256dHash {
-        match self {
-            &StoredBlock::HeaderOnly(ref header) => header.bitcoin_hash(),
-            &StoredBlock::FullBlock(ref block) => block.bitcoin_hash(),
-        }
+        self.header().bitcoin_hash()
     }
 }
 
@@ -87,11 +93,15 @@ struct StableBlockChain {
 }
 
 impl StableBlockChain {
-    pub fn new() -> StableBlockChain {
+    fn new() -> StableBlockChain {
         StableBlockChain { blocks: Vec::new() }
     }
 
-    pub fn add_block(&mut self, stabled: StabledBlock) {
+    fn len(&self) -> usize {
+        self.blocks.len()
+    }
+
+    fn add_block(&mut self, stabled: StabledBlock) {
         self.blocks.push(stabled.0);
     }
 }
@@ -111,6 +121,10 @@ impl UnstableBlockChain {
         }
     }
 
+    fn len(&self) -> usize {
+        self.tree.len()
+    }
+
     fn try_add(
         &mut self,
         block: StoredBlock,
@@ -126,7 +140,14 @@ impl UnstableBlockChain {
 }
 
 struct BlockTree {
+    // Head node. This is almost stabled.
     head: *mut BlockTreeNode,
+
+    // Last node of longest chain
+    last: *mut BlockTreeNode,
+
+    // Cache of length
+    len: usize,
 }
 
 struct BlockTreeNode {
@@ -146,9 +167,17 @@ impl BlockTree {
             block_hash: block.bitcoin_hash(),
             block: block,
         };
+        let node_ptr = node.into_ptr();
+
         BlockTree {
-            head: node.into_ptr(),
+            head: node_ptr,
+            last: node_ptr,
+            len: 1,
         }
+    }
+
+    fn len(&self) -> usize {
+        self.len
     }
 
     fn try_add(
@@ -163,39 +192,48 @@ impl BlockTree {
             // Append given block to prev node
             let new_node = append_block_to_node(node, block);
 
-            // Note that `stored_block_ref`'s lifetime is same with `self`
-            let stored_block_ref = &new_node.as_ref().unwrap().block;
+            // If new_node is a new tip, replace it
+            let old_tip_depth = depth_from_root(self.last);
+            let new_node_depth = depth_from_root(new_node);
+            if old_tip_depth < new_node_depth {
+                self.last = new_node;
+            }
+            self.len += 1;
+
+            // Note that `stored_block`'s lifetime is same with `self`
+            let stored_block = &new_node.as_ref().unwrap().block;
 
             // If there is node wihch has enough confirmation,
-            if let Some(almost_stable) = find_prior_node(new_node, ENOUGH_CONFIRMATION) {
+            if let Some(enough_confirmed) = find_prior_node(new_node, ENOUGH_CONFIRMATION) {
+                self.len -= 1;
+
                 let stabled_node_ptr = self.head;
                 let stabled_node = stabled_node_ptr.as_ref().unwrap();
 
                 // drop outdated nodes
                 for next in stabled_node.nexts.iter() {
-                    if *next != almost_stable {
+                    if *next != enough_confirmed {
                         drop_with_sub_node(*next);
                     }
                 }
 
                 // move almost stable node to a new head
-                self.head = almost_stable;
+                enough_confirmed.as_mut().unwrap().prev = None;
+                self.head = enough_confirmed;
 
                 // return head node's block as stabled block
                 let block = stabled_node.block.clone();
                 drop(Box::from_raw(stabled_node_ptr));
-                return Ok((stored_block_ref, Some(StabledBlock(block))));
+                return Ok((stored_block, Some(StabledBlock(block))));
             } else {
                 // Successfully added a new block but no stabled block is created.
-                Ok((stored_block_ref, None))
+                Ok((stored_block, None))
             }
         }
     }
 
     fn iter(&self) -> BlockTreeIter {
-        BlockTreeIter {
-            next_node: Some(unsafe { self.head.as_ref().unwrap() }),
-        }
+        unsafe { BlockTreeIter::from_last_node(self.last.as_ref().unwrap()) }
     }
 }
 
@@ -245,6 +283,16 @@ unsafe fn find_node_by_hash(
     None
 }
 
+// Make sure `node` is not null
+unsafe fn depth_from_root(node_ptr: *mut BlockTreeNode) -> usize {
+    let node = node_ptr.as_ref().unwrap();
+    if let Some(prev) = node.prev {
+        depth_from_root(prev)
+    } else {
+        0
+    }
+}
+
 // Make sure `from` is not null
 unsafe fn find_prior_node(from: *mut BlockTreeNode, back: usize) -> Option<*mut BlockTreeNode> {
     if back == 0 {
@@ -266,37 +314,75 @@ unsafe fn drop_with_sub_node(node_ptr: *mut BlockTreeNode) {
 }
 
 pub struct BlockTreeIter<'a> {
-    next_node: Option<&'a BlockTreeNode>,
+    // to reduce memory allocation, using array with Option instead using Vec
+    nodes: [Option<&'a BlockTreeNode>; ENOUGH_CONFIRMATION],
+    next: usize,
+    next_back: usize,
+    finished: bool,
+}
+
+impl<'a> BlockTreeIter<'a> {
+    fn from_last_node(last: &'a BlockTreeNode) -> BlockTreeIter<'a> {
+        let (count, mut prev_nodes) = prev_nodes(last);
+        prev_nodes[count] = Some(last);
+        BlockTreeIter {
+            nodes: prev_nodes,
+            next: 0,
+            next_back: count,
+            finished: false,
+        }
+    }
+}
+
+fn prev_nodes<'a>(
+    node: &'a BlockTreeNode,
+) -> (usize, [Option<&'a BlockTreeNode>; ENOUGH_CONFIRMATION]) {
+    if node.prev.is_none() {
+        return (0, [None; ENOUGH_CONFIRMATION]);
+    }
+
+    let prev = unsafe { node.prev.unwrap().as_ref().unwrap() };
+    let (count, mut prev_nodes) = prev_nodes(prev);
+    prev_nodes[count] = Some(prev);
+    (count, prev_nodes)
 }
 
 impl<'a> Iterator for BlockTreeIter<'a> {
     type Item = &'a StoredBlock;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let node = self.next_node?;
+        if self.finished {
+            return None;
+        }
 
-        self.next_node = unsafe { search_next_iter_node(node) };
+        if self.next == self.next_back {
+            // finish at this call
+            self.finished = true;
+        }
+
+        let node = self.nodes[self.next].unwrap();
+
+        self.next += 1;
 
         Some(&node.block)
     }
 }
 
-unsafe fn search_next_iter_node(node: &BlockTreeNode) -> Option<&BlockTreeNode> {
-    node.nexts
-        .iter()
-        .max_by_key(|ptr| max_child_len(**ptr))
-        .map(|ptr| ptr.as_ref().unwrap())
-}
+impl<'a> DoubleEndedIterator for BlockTreeIter<'a> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
 
-// Make sure `node_ptr` is not null
-unsafe fn max_child_len(node_ptr: *mut BlockTreeNode) -> usize {
-    node_ptr
-        .as_ref()
-        .unwrap()
-        .nexts
-        .iter()
-        .map(|ptr| max_child_len(*ptr))
-        .max()
-        .map(|max| max + 1)
-        .unwrap_or(0)
+        if self.next == self.next_back {
+            // finish at this call
+            self.finished = true;
+        }
+
+        let node = self.nodes[self.next_back].unwrap();
+
+        self.next_back -= 1;
+
+        Some(&node.block)
+    }
 }
