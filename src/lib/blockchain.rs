@@ -20,20 +20,21 @@ impl BlockChain {
         }
     }
 
-    pub fn try_add(&mut self, block: StoredBlock) -> Result<(), InvalidBlock> {
+    pub fn try_add(&mut self, block: StoredBlock) -> Result<&StoredBlock, InvalidBlock> {
         // TODO : Check PoW of given block
 
-        if let Some(stabled) = self.unstable_chain.try_add(block)? {
+        let (stored_block, maybe_stabled) = self.unstable_chain.try_add(block)?;
+        if let Some(stabled) = maybe_stabled {
             self.stable_chain.add_block(stabled);
         }
-        Ok(())
+        Ok(stored_block)
     }
 
-    pub fn try_add_header(&mut self, header: BlockHeader) -> Result<(), InvalidBlock> {
+    pub fn try_add_header(&mut self, header: BlockHeader) -> Result<&StoredBlock, InvalidBlock> {
         self.try_add(StoredBlock::header_only(header))
     }
 
-    pub fn try_add_block(&mut self, block: Block) -> Result<(), InvalidBlock> {
+    pub fn try_add_full_block(&mut self, block: Block) -> Result<&StoredBlock, InvalidBlock> {
         self.try_add(StoredBlock::full_block(block))
     }
 
@@ -110,7 +111,10 @@ impl UnstableBlockChain {
         }
     }
 
-    fn try_add(&mut self, block: StoredBlock) -> Result<Option<StabledBlock>, InvalidBlock> {
+    fn try_add(
+        &mut self,
+        block: StoredBlock,
+    ) -> Result<(&StoredBlock, Option<StabledBlock>), InvalidBlock> {
         debug!("Try to add a new block");
 
         self.tree.try_add(block)
@@ -147,7 +151,10 @@ impl BlockTree {
         }
     }
 
-    fn try_add(&mut self, block: StoredBlock) -> Result<Option<StabledBlock>, InvalidBlock> {
+    fn try_add(
+        &mut self,
+        block: StoredBlock,
+    ) -> Result<(&StoredBlock, Option<StabledBlock>), InvalidBlock> {
         unsafe {
             // Search prev block of given block
             let node =
@@ -155,6 +162,9 @@ impl BlockTree {
 
             // Append given block to prev node
             let new_node = append_block_to_node(node, block);
+
+            // Note that `stored_block_ref`'s lifetime is same with `self`
+            let stored_block_ref = &new_node.as_ref().unwrap().block;
 
             // If there is node wihch has enough confirmation,
             if let Some(almost_stable) = find_prior_node(new_node, ENOUGH_CONFIRMATION) {
@@ -174,12 +184,12 @@ impl BlockTree {
                 // return head node's block as stabled block
                 let block = stabled_node.block.clone();
                 drop(Box::from_raw(stabled_node_ptr));
-                return Ok(Some(StabledBlock(block)));
+                return Ok((stored_block_ref, Some(StabledBlock(block))));
+            } else {
+                // Successfully added a new block but no stabled block is created.
+                Ok((stored_block_ref, None))
             }
         }
-
-        // Successfully added a new block but no stabled block is created.
-        Ok(None)
     }
 
     fn iter(&self) -> BlockTreeIter {
