@@ -47,6 +47,14 @@ pub enum StoredBlock {
 }
 
 impl StoredBlock {
+    pub fn header_only(header: BlockHeader) -> StoredBlock {
+        StoredBlock::HeaderOnly(header)
+    }
+
+    pub fn full_block(block: Block) -> StoredBlock {
+        StoredBlock::FullBlock(block)
+    }
+
     pub fn header(&self) -> &BlockHeader {
         match self {
             &StoredBlock::HeaderOnly(ref header) => header,
