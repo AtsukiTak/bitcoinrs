@@ -14,6 +14,7 @@ impl Node {
         // TODO
     }
 
+    /// Send `GetBlocks` message to given `peer`.
     fn request_blocks(&self, peer: &mut Connection) {
         // ordered newest to oldest.
         // For now, I use very naive implementation. Need to fix later.

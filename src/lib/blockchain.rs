@@ -13,6 +13,11 @@ pub struct BlockChain {
 pub struct InvalidBlock;
 
 impl BlockChain {
+    /// Creaet a new `BlockChain` struct with genesis block.
+    /// Note that the term of genesis block in here is not same  with bitcoin's genesis block.
+    /// It just root block of returned `BlockChain`.
+    /// Given genesis block may be different from bitcoin's genesis block.
+    /// And also note that given genesis block **MUST** be stable one.
     pub fn with_genesis(block: StoredBlock) -> BlockChain {
         BlockChain {
             stable_chain: StableBlockChain::new(),
@@ -24,6 +29,8 @@ impl BlockChain {
         self.stable_chain.len() + self.unstable_chain.len()
     }
 
+    /// Try to add a new block.
+    /// If success, reference to given block is returned.
     pub fn try_add(&mut self, block: StoredBlock) -> Result<&StoredBlock, InvalidBlock> {
         // TODO : Check PoW of given block
 
@@ -42,19 +49,40 @@ impl BlockChain {
         self.try_add(StoredBlock::full_block(block))
     }
 
-    // Genesis block is first
+    /// Get iterator representing current best block chain.
+    /// Oldest block comes first, latest block comes last.
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a StoredBlock> + DoubleEndedIterator {
         let unstable_blocks = self.unstable_chain.iter();
         let stable_blocks = self.stable_chain.blocks.iter();
         stable_blocks.chain(unstable_blocks)
     }
 
+    /// Get vector representing best block chain.
+    /// Oldest block comes first, latest block comes last.
+    ///
+    /// # Note
+    /// This function may be deleted in future because user can just call `self.iter().collect()`.
     pub fn to_vec(&self) -> Vec<&StoredBlock> {
         self.iter().collect()
     }
 
+    /// Get latest block
+    ///
+    /// The key of this function is `unwrap`; since there are always genesis block at least,
+    /// we can call `unwrap`.
     pub fn latest_block(&self) -> &StoredBlock {
-        self.iter().rev().next().unwrap() // since there always genesis block
+        self.iter().rev().next().unwrap() // since there are always genesis block
+    }
+
+    /// Get locator blocks iterator.
+    ///
+    /// # Note
+    /// Current implementation is **VERY** **VERY** simple.
+    /// It should be improved in future.
+    /// Bitcoin core's implementation is here.
+    /// https://github.com/bitcoin/bitcoin/blob/master/src/chain.cpp#L23
+    pub fn locator_blocks<'a>(&'a self) -> impl Iterator<Item = &'a StoredBlock> {
+        self.iter().rev().take(10)
     }
 }
 
