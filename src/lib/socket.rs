@@ -1,55 +1,68 @@
 use std::net::SocketAddr;
-use bitcoin::network::{address::Address, constants::Network, message::NetworkMessage,
-                       socket::Socket};
+use bitcoin::network::{address::Address, constants::Network, message::NetworkMessage, socket::Socket};
 
 use error::Error;
 
-pub struct SyncSocket {
+pub struct SyncSocket
+{
     socket: Socket,
     remote_addr: Address,
     local_addr: Address,
 }
 
-impl SyncSocket {
-    pub fn open(addr: &SocketAddr, network: Network) -> Result<SyncSocket, Error> {
+impl SyncSocket
+{
+    pub fn open(addr: &SocketAddr, network: Network) -> Result<SyncSocket, Error>
+    {
         let mut socket = Socket::new(network);
         socket.connect(format!("{}", addr.ip()).as_str(), addr.port())?;
         let remote_addr = socket.receiver_address()?;
         let local_addr = socket.sender_address()?;
         Ok(SyncSocket {
-            socket: socket,
-            remote_addr: remote_addr,
-            local_addr: local_addr,
+            socket,
+            remote_addr,
+            local_addr,
         })
     }
 
-    pub fn remote_addr(&self) -> &Address {
+    pub fn remote_addr(&self) -> &Address
+    {
         &self.remote_addr
     }
 
-    pub fn local_addr(&self) -> &Address {
+    pub fn local_addr(&self) -> &Address
+    {
         &self.local_addr
     }
 
-    pub fn user_agent(&self) -> &str {
+    pub fn user_agent(&self) -> &str
+    {
         self.socket.user_agent.as_str()
     }
 
-    pub fn send_msg(&mut self, msg: NetworkMessage) -> Result<(), Error> {
+    pub fn send_msg(&mut self, msg: NetworkMessage) -> Result<(), Error>
+    {
         info!("Send new msg to {:?} : {:?}", self.remote_addr, msg);
         Ok(self.socket.send_message(msg)?)
     }
 
-    pub fn recv_msg(&mut self) -> Result<NetworkMessage, Error> {
+    pub fn recv_msg(&mut self) -> Result<NetworkMessage, Error>
+    {
         let msg = self.socket.receive_message()?;
         debug!("Receive a new msg from {:?} : {:?}", self.remote_addr, msg);
         Ok(msg)
     }
 }
 
-impl ::std::fmt::Debug for SyncSocket {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
-        write!(f, "SyncSocket {{ remote: {:?}, local: {:?} }}", self.remote_addr, self.local_addr)
+impl ::std::fmt::Debug for SyncSocket
+{
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
+    {
+        write!(
+            f,
+            "SyncSocket {{ remote: {:?}, local: {:?} }}",
+            self.remote_addr, self.local_addr
+        )
     }
 }
 

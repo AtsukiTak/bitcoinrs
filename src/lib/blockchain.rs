@@ -5,20 +5,23 @@ use bitcoin::util::hash::Sha256dHash;
 const ENOUGH_CONFIRMATION: usize = 6;
 
 /// A simple implementation of blockchain.
-pub struct BlockChain {
+pub struct BlockChain
+{
     stable_chain: StableBlockChain,
     unstable_chain: UnstableBlockChain,
 }
 
 pub struct InvalidBlock;
 
-impl BlockChain {
+impl BlockChain
+{
     /// Creaet a new `BlockChain` struct with genesis block.
     /// Note that the term of genesis block in here is not same  with bitcoin's genesis block.
     /// It just root block of returned `BlockChain`.
     /// Given genesis block may be different from bitcoin's genesis block.
     /// And also note that given genesis block **MUST** be stable one.
-    pub fn with_genesis(block: StoredBlock) -> BlockChain {
+    pub fn with_genesis(block: StoredBlock) -> BlockChain
+    {
         BlockChain {
             stable_chain: StableBlockChain::new(),
             unstable_chain: UnstableBlockChain::with_genesis(block),
@@ -26,13 +29,15 @@ impl BlockChain {
     }
 
     /// Get length of current best chain.
-    pub fn len(&self) -> usize {
+    pub fn len(&self) -> usize
+    {
         self.stable_chain.len() + self.unstable_chain.len()
     }
 
     /// Try to add a new block.
     /// If success, reference to given block is returned.
-    pub fn try_add(&mut self, block: StoredBlock) -> Result<&StoredBlock, InvalidBlock> {
+    pub fn try_add(&mut self, block: StoredBlock) -> Result<&StoredBlock, InvalidBlock>
+    {
         // TODO : Check PoW of given block
 
         let (stored_block, maybe_stabled) = self.unstable_chain.try_add(block)?;
@@ -44,7 +49,8 @@ impl BlockChain {
 
     /// Get iterator representing current best block chain.
     /// Oldest block comes first, latest block comes last.
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a StoredBlock> + DoubleEndedIterator {
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a StoredBlock> + DoubleEndedIterator
+    {
         let unstable_blocks = self.unstable_chain.iter();
         let stable_blocks = self.stable_chain.blocks.iter();
         stable_blocks.chain(unstable_blocks)
@@ -55,7 +61,8 @@ impl BlockChain {
     ///
     /// # Note
     /// This function may be deleted in future because user can just call `self.iter().collect()`.
-    pub fn to_vec(&self) -> Vec<&StoredBlock> {
+    pub fn to_vec(&self) -> Vec<&StoredBlock>
+    {
         self.iter().collect()
     }
 
@@ -63,11 +70,13 @@ impl BlockChain {
     ///
     /// The key of this function is `unwrap`; since there are always genesis block at least,
     /// we can call `unwrap`.
-    pub fn latest_block(&self) -> &StoredBlock {
+    pub fn latest_block(&self) -> &StoredBlock
+    {
         self.iter().rev().next().unwrap() // since there are always genesis block
     }
 
-    pub fn get_block(&self, hash: &Sha256dHash) -> Option<&StoredBlock> {
+    pub fn get_block(&self, hash: &Sha256dHash) -> Option<&StoredBlock>
+    {
         self.iter().find(|b| b.bitcoin_hash() == *hash)
     }
 
@@ -78,51 +87,63 @@ impl BlockChain {
     /// It should be improved in future.
     /// Bitcoin core's implementation is here.
     /// https://github.com/bitcoin/bitcoin/blob/master/src/chain.cpp#L23
-    pub fn locator_blocks<'a>(&'a self) -> impl Iterator<Item = &'a StoredBlock> {
+    pub fn locator_blocks<'a>(&'a self) -> impl Iterator<Item = &'a StoredBlock>
+    {
         self.iter().rev().take(10)
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct StoredBlock {
+pub struct StoredBlock
+{
     block: Block,
     hash: Sha256dHash, // Just for cache.
 }
 
-impl StoredBlock {
-    pub fn new(block: Block) -> StoredBlock {
+impl StoredBlock
+{
+    pub fn new(block: Block) -> StoredBlock
+    {
         StoredBlock {
             hash: block.bitcoin_hash(),
-            block: block,
+            block,
         }
     }
 
-    pub fn header(&self) -> &BlockHeader {
+    pub fn header(&self) -> &BlockHeader
+    {
         &self.block.header
     }
 }
 
-impl BitcoinHash for StoredBlock {
-    fn bitcoin_hash(&self) -> Sha256dHash {
+impl BitcoinHash for StoredBlock
+{
+    fn bitcoin_hash(&self) -> Sha256dHash
+    {
         self.hash
     }
 }
 
 /// Chain of blocks which is confirmed enough.
-struct StableBlockChain {
+struct StableBlockChain
+{
     blocks: Vec<StoredBlock>,
 }
 
-impl StableBlockChain {
-    fn new() -> StableBlockChain {
+impl StableBlockChain
+{
+    fn new() -> StableBlockChain
+    {
         StableBlockChain { blocks: Vec::new() }
     }
 
-    fn len(&self) -> usize {
+    fn len(&self) -> usize
+    {
         self.blocks.len()
     }
 
-    fn add_block(&mut self, stabled: StabledBlock) {
+    fn add_block(&mut self, stabled: StabledBlock)
+    {
         self.blocks.push(stabled.0);
     }
 }
@@ -131,36 +152,40 @@ impl StableBlockChain {
 struct StabledBlock(StoredBlock);
 
 /// Chain of blocks which is **NOT** confirmed enough.
-struct UnstableBlockChain {
+struct UnstableBlockChain
+{
     tree: BlockTree,
 }
 
-impl UnstableBlockChain {
-    fn with_genesis(block: StoredBlock) -> UnstableBlockChain {
+impl UnstableBlockChain
+{
+    fn with_genesis(block: StoredBlock) -> UnstableBlockChain
+    {
         UnstableBlockChain {
             tree: BlockTree::with_genesis(block),
         }
     }
 
-    fn len(&self) -> usize {
+    fn len(&self) -> usize
+    {
         self.tree.len()
     }
 
-    fn try_add(
-        &mut self,
-        block: StoredBlock,
-    ) -> Result<(&StoredBlock, Option<StabledBlock>), InvalidBlock> {
+    fn try_add(&mut self, block: StoredBlock) -> Result<(&StoredBlock, Option<StabledBlock>), InvalidBlock>
+    {
         debug!("Try to add a new block");
 
         self.tree.try_add(block)
     }
 
-    fn iter(&self) -> BlockTreeIter {
+    fn iter(&self) -> BlockTreeIter
+    {
         self.tree.iter()
     }
 }
 
-struct BlockTree {
+struct BlockTree
+{
     // Head node. This is almost stabled.
     head: *mut BlockTreeNode,
 
@@ -171,7 +196,8 @@ struct BlockTree {
     len: usize,
 }
 
-struct BlockTreeNode {
+struct BlockTreeNode
+{
     prev: Option<*mut BlockTreeNode>,
     nexts: Vec<*mut BlockTreeNode>,
     block: StoredBlock,
@@ -180,13 +206,15 @@ struct BlockTreeNode {
     block_hash: Sha256dHash,
 }
 
-impl BlockTree {
-    fn with_genesis(block: StoredBlock) -> BlockTree {
+impl BlockTree
+{
+    fn with_genesis(block: StoredBlock) -> BlockTree
+    {
         let node = BlockTreeNode {
             prev: None,
             nexts: vec![],
             block_hash: block.bitcoin_hash(),
-            block: block,
+            block,
         };
         let node_ptr = node.into_ptr();
 
@@ -197,18 +225,16 @@ impl BlockTree {
         }
     }
 
-    fn len(&self) -> usize {
+    fn len(&self) -> usize
+    {
         self.len
     }
 
-    fn try_add(
-        &mut self,
-        block: StoredBlock,
-    ) -> Result<(&StoredBlock, Option<StabledBlock>), InvalidBlock> {
+    fn try_add(&mut self, block: StoredBlock) -> Result<(&StoredBlock, Option<StabledBlock>), InvalidBlock>
+    {
         unsafe {
             // Search prev block of given block
-            let node =
-                find_node_by_hash(self.head, &block.header().prev_blockhash).ok_or(InvalidBlock)?;
+            let node = find_node_by_hash(self.head, &block.header().prev_blockhash).ok_or(InvalidBlock)?;
 
             // Append given block to prev node
             let new_node = append_block_to_node(node, block);
@@ -253,30 +279,36 @@ impl BlockTree {
         }
     }
 
-    fn iter(&self) -> BlockTreeIter {
+    fn iter(&self) -> BlockTreeIter
+    {
         unsafe { BlockTreeIter::from_last_node(self.last.as_ref().unwrap()) }
     }
 }
 
-impl Drop for BlockTree {
-    fn drop(&mut self) {
+impl Drop for BlockTree
+{
+    fn drop(&mut self)
+    {
         unsafe { drop_with_sub_node(self.head) };
     }
 }
 
-impl BlockTreeNode {
-    fn into_ptr(self) -> *mut BlockTreeNode {
+impl BlockTreeNode
+{
+    fn into_ptr(self) -> *mut BlockTreeNode
+    {
         Box::into_raw(Box::new(self))
     }
 }
 
 // Make sure `node` is not null
-unsafe fn append_block_to_node(node: *mut BlockTreeNode, block: StoredBlock) -> *mut BlockTreeNode {
+unsafe fn append_block_to_node(node: *mut BlockTreeNode, block: StoredBlock) -> *mut BlockTreeNode
+{
     let new_node = BlockTreeNode {
         prev: Some(node.clone()),
         nexts: vec![],
         block_hash: block.bitcoin_hash(),
-        block: block,
+        block,
     };
     let new_node_ptr = new_node.into_ptr();
     node.as_mut().unwrap().nexts.push(new_node_ptr.clone());
@@ -285,10 +317,8 @@ unsafe fn append_block_to_node(node: *mut BlockTreeNode, block: StoredBlock) -> 
 
 // Serch root node first
 // Make sure `node` is not null
-unsafe fn find_node_by_hash(
-    node_ptr: *mut BlockTreeNode,
-    hash: &Sha256dHash,
-) -> Option<*mut BlockTreeNode> {
+unsafe fn find_node_by_hash(node_ptr: *mut BlockTreeNode, hash: &Sha256dHash) -> Option<*mut BlockTreeNode>
+{
     let node = node_ptr.as_ref().unwrap();
     if node.block_hash == *hash {
         return Some(node_ptr);
@@ -305,7 +335,8 @@ unsafe fn find_node_by_hash(
 }
 
 // Make sure `node` is not null
-unsafe fn depth_from_root(node_ptr: *mut BlockTreeNode) -> usize {
+unsafe fn depth_from_root(node_ptr: *mut BlockTreeNode) -> usize
+{
     let node = node_ptr.as_ref().unwrap();
     if let Some(prev) = node.prev {
         depth_from_root(prev)
@@ -315,7 +346,8 @@ unsafe fn depth_from_root(node_ptr: *mut BlockTreeNode) -> usize {
 }
 
 // Make sure `from` is not null
-unsafe fn find_prior_node(from: *mut BlockTreeNode, back: usize) -> Option<*mut BlockTreeNode> {
+unsafe fn find_prior_node(from: *mut BlockTreeNode, back: usize) -> Option<*mut BlockTreeNode>
+{
     if back == 0 {
         return Some(from);
     }
@@ -326,7 +358,8 @@ unsafe fn find_prior_node(from: *mut BlockTreeNode, back: usize) -> Option<*mut 
 }
 
 // Make sure `node_ptr` is not null.
-unsafe fn drop_with_sub_node(node_ptr: *mut BlockTreeNode) {
+unsafe fn drop_with_sub_node(node_ptr: *mut BlockTreeNode)
+{
     let node = node_ptr.as_ref().unwrap();
     for next in node.nexts.iter() {
         drop_with_sub_node(*next);
@@ -334,7 +367,8 @@ unsafe fn drop_with_sub_node(node_ptr: *mut BlockTreeNode) {
     drop(Box::from_raw(node_ptr));
 }
 
-pub struct BlockTreeIter<'a> {
+pub struct BlockTreeIter<'a>
+{
     // to reduce memory allocation, using array with Option instead using Vec
     nodes: [Option<&'a BlockTreeNode>; ENOUGH_CONFIRMATION],
     next: usize,
@@ -342,8 +376,10 @@ pub struct BlockTreeIter<'a> {
     finished: bool,
 }
 
-impl<'a> BlockTreeIter<'a> {
-    fn from_last_node(last: &'a BlockTreeNode) -> BlockTreeIter<'a> {
+impl<'a> BlockTreeIter<'a>
+{
+    fn from_last_node(last: &'a BlockTreeNode) -> BlockTreeIter<'a>
+    {
         let (count, mut prev_nodes) = prev_nodes(last);
         prev_nodes[count] = Some(last);
         BlockTreeIter {
@@ -355,9 +391,8 @@ impl<'a> BlockTreeIter<'a> {
     }
 }
 
-fn prev_nodes<'a>(
-    node: &'a BlockTreeNode,
-) -> (usize, [Option<&'a BlockTreeNode>; ENOUGH_CONFIRMATION]) {
+fn prev_nodes<'a>(node: &'a BlockTreeNode) -> (usize, [Option<&'a BlockTreeNode>; ENOUGH_CONFIRMATION])
+{
     if node.prev.is_none() {
         return (0, [None; ENOUGH_CONFIRMATION]);
     }
@@ -368,10 +403,12 @@ fn prev_nodes<'a>(
     (count, prev_nodes)
 }
 
-impl<'a> Iterator for BlockTreeIter<'a> {
+impl<'a> Iterator for BlockTreeIter<'a>
+{
     type Item = &'a StoredBlock;
 
-    fn next(&mut self) -> Option<Self::Item> {
+    fn next(&mut self) -> Option<Self::Item>
+    {
         if self.finished {
             return None;
         }
@@ -389,8 +426,10 @@ impl<'a> Iterator for BlockTreeIter<'a> {
     }
 }
 
-impl<'a> DoubleEndedIterator for BlockTreeIter<'a> {
-    fn next_back(&mut self) -> Option<Self::Item> {
+impl<'a> DoubleEndedIterator for BlockTreeIter<'a>
+{
+    fn next_back(&mut self) -> Option<Self::Item>
+    {
         if self.finished {
             return None;
         }
