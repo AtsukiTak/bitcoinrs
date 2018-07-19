@@ -67,6 +67,10 @@ impl BlockChain {
         self.iter().rev().next().unwrap() // since there are always genesis block
     }
 
+    pub fn get_block(&self, hash: &Sha256dHash) -> Option<&StoredBlock> {
+        self.iter().find(|b| b.bitcoin_hash() == *hash)
+    }
+
     /// Get locator blocks iterator.
     ///
     /// # Note
