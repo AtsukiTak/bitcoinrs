@@ -4,7 +4,6 @@ use bitcoin::network::{address::Address, constants::Network, message::NetworkMes
 
 use error::Error;
 
-#[derive(Clone)]
 pub struct SyncSocket {
     socket: Socket,
     remote_addr: Address,
@@ -45,6 +44,12 @@ impl SyncSocket {
         let msg = self.socket.receive_message()?;
         debug!("Receive a new msg from {:?} : {:?}", self.remote_addr, msg);
         Ok(msg)
+    }
+}
+
+impl ::std::fmt::Debug for SyncSocket {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
+        write!(f, "SyncSocket {{ remote: {:?}, local: {:?} }}", self.remote_addr, self.local_addr)
     }
 }
 
