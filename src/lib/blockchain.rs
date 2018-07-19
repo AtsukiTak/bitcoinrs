@@ -25,6 +25,7 @@ impl BlockChain {
         }
     }
 
+    /// Get length of current best chain.
     pub fn len(&self) -> usize {
         self.stable_chain.len() + self.unstable_chain.len()
     }
@@ -39,14 +40,6 @@ impl BlockChain {
             self.stable_chain.add_block(stabled);
         }
         Ok(stored_block)
-    }
-
-    pub fn try_add_header(&mut self, header: BlockHeader) -> Result<&StoredBlock, InvalidBlock> {
-        self.try_add(StoredBlock::header_only(header))
-    }
-
-    pub fn try_add_full_block(&mut self, block: Block) -> Result<&StoredBlock, InvalidBlock> {
-        self.try_add(StoredBlock::full_block(block))
     }
 
     /// Get iterator representing current best block chain.
@@ -87,31 +80,27 @@ impl BlockChain {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum StoredBlock {
-    HeaderOnly(BlockHeader),
-    FullBlock(Block),
+pub struct StoredBlock {
+    block: Block,
+    hash: Sha256dHash, // Just for cache.
 }
 
 impl StoredBlock {
-    pub fn header_only(header: BlockHeader) -> StoredBlock {
-        StoredBlock::HeaderOnly(header)
-    }
-
-    pub fn full_block(block: Block) -> StoredBlock {
-        StoredBlock::FullBlock(block)
+    pub fn new(block: Block) -> StoredBlock {
+        StoredBlock {
+            hash: block.bitcoin_hash(),
+            block: block,
+        }
     }
 
     pub fn header(&self) -> &BlockHeader {
-        match self {
-            &StoredBlock::HeaderOnly(ref header) => header,
-            &StoredBlock::FullBlock(ref block) => &block.header,
-        }
+        &self.block.header
     }
 }
 
 impl BitcoinHash for StoredBlock {
     fn bitcoin_hash(&self) -> Sha256dHash {
-        self.header().bitcoin_hash()
+        self.hash
     }
 }
 
