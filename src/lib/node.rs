@@ -67,7 +67,7 @@ impl Node
     pub fn recv_block(&mut self, block: Block, peer: &mut Connection) -> ProcessResult
     {
         info!("Process incoming block");
-        match self.blockchain.try_add(StoredBlock::new(block)) {
+        match self.blockchain.try_add(block) {
             Ok(_) => ProcessResult::Ack,
             Err(_) => {
                 warn!("Peer {:?} send us unwanted block. So we disconnect.", peer);

@@ -20,11 +20,11 @@ impl BlockChain
     /// It just root block of returned `BlockChain`.
     /// Given genesis block may be different from bitcoin's genesis block.
     /// And also note that given genesis block **MUST** be stable one.
-    pub fn with_genesis(block: StoredBlock) -> BlockChain
+    pub fn with_genesis(block: Block) -> BlockChain
     {
         BlockChain {
             stable_chain: StableBlockChain::new(),
-            unstable_chain: UnstableBlockChain::with_genesis(block),
+            unstable_chain: UnstableBlockChain::with_genesis(StoredBlock::new(block)),
         }
     }
 
@@ -36,11 +36,11 @@ impl BlockChain
 
     /// Try to add a new block.
     /// If success, reference to given block is returned.
-    pub fn try_add(&mut self, block: StoredBlock) -> Result<&StoredBlock, InvalidBlock>
+    pub fn try_add(&mut self, block: Block) -> Result<&StoredBlock, InvalidBlock>
     {
         // TODO : Check PoW of given block
 
-        let (stored_block, maybe_stabled) = self.unstable_chain.try_add(block)?;
+        let (stored_block, maybe_stabled) = self.unstable_chain.try_add(StoredBlock::new(block))?;
         if let Some(stabled) = maybe_stabled {
             self.stable_chain.add_block(stabled);
         }
