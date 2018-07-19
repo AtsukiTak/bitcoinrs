@@ -1,5 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
-use bitcoin::network::{constants, message::NetworkMessage, message_network::VersionMessage};
+use bitcoin::network::{constants, message::NetworkMessage, message_blockdata::{GetBlocksMessage, Inventory},
+                       message_network::VersionMessage};
+use bitcoin::blockdata::block::Block;
 
 use socket::SyncSocket;
 use error::{Error, ErrorKind};
@@ -13,6 +15,18 @@ pub struct Connection
 
     remote_version_msg: VersionMessage,
     local_version_msg: VersionMessage,
+}
+
+pub enum OutgoingMessage
+{
+    GetBlocks(GetBlocksMessage),
+    GetData(Vec<Inventory>),
+}
+
+pub enum IncomingMessage
+{
+    Block(Block),
+    Inv(Vec<Inventory>),
 }
 
 impl Connection
@@ -51,26 +65,29 @@ impl Connection
         })
     }
 
-    pub fn send_msg(&mut self, msg: NetworkMessage) -> Result<(), Error>
+    pub fn send_msg(&mut self, msg: OutgoingMessage) -> Result<(), Error>
     {
+        let msg = match msg {
+            OutgoingMessage::GetBlocks(m) => NetworkMessage::GetBlocks(m),
+            OutgoingMessage::GetData(m) => NetworkMessage::GetData(m),
+        };
         self.socket.send_msg(msg)
     }
 
-    /// Receive only
+    /// Receive only below message.
     /// - Block
     /// - Inv
-    /// message.
     ///
-    /// Wait until above message comes.
-    pub fn recv_msg(&mut self) -> Result<NetworkMessage, Error>
+    /// Wait until above message arrives.
+    pub fn recv_msg(&mut self) -> Result<IncomingMessage, Error>
     {
         loop {
             let msg = self.socket.recv_msg()?;
             info!("Receive a new message : {:?}", msg);
             match msg {
-                NetworkMessage::Ping(nonce) => self.send_msg(NetworkMessage::Pong(nonce))?,
-                m @ NetworkMessage::Block(_) => return Ok(m),
-                m @ NetworkMessage::Inv(_) => return Ok(m),
+                NetworkMessage::Ping(nonce) => self.socket.send_msg(NetworkMessage::Pong(nonce))?,
+                NetworkMessage::Block(b) => return Ok(IncomingMessage::Block(b)),
+                NetworkMessage::Inv(i) => return Ok(IncomingMessage::Inv(i)),
                 _ => {
                     info!("Discard incoming message.");
                 },

@@ -1,9 +1,8 @@
-use bitcoin::network::{message::NetworkMessage, message_blockdata::{GetBlocksMessage, InvType, Inventory},
-                       serialize::BitcoinHash};
+use bitcoin::network::{message_blockdata::{GetBlocksMessage, InvType, Inventory}, serialize::BitcoinHash};
 use bitcoin::util::hash::Sha256dHash;
 use bitcoin::blockdata::block::Block;
 
-use connection::Connection;
+use connection::{Connection, OutgoingMessage};
 use blockchain::{BlockChain, StoredBlock};
 
 pub struct Node
@@ -19,6 +18,12 @@ pub enum ProcessResult
 
 impl Node
 {
+    /// Create a new `Node`.
+    pub fn new(blockchain: BlockChain) -> Node
+    {
+        Node { blockchain }
+    }
+
     /// Send `getblocks` message to given `peer`.
     /// When we start, we need to send `getblocks` message first and then,
     /// we receive `inv` message as response.
@@ -26,7 +31,7 @@ impl Node
     {
         let locator_hashes = self.blockchain.locator_blocks().map(|b| b.bitcoin_hash()).collect();
         let get_blocks_msg = GetBlocksMessage::new(locator_hashes, Sha256dHash::default());
-        let network_msg = NetworkMessage::GetBlocks(get_blocks_msg);
+        let network_msg = OutgoingMessage::GetBlocks(get_blocks_msg);
         if peer.send_msg(network_msg).is_err() {
             ProcessResult::Ban
         } else {
@@ -51,7 +56,7 @@ impl Node
     /// Send `getdata` message to given `peer`.
     fn request_data(&self, invs: Vec<Inventory>, peer: &mut Connection) -> ProcessResult
     {
-        let msg = NetworkMessage::GetData(invs);
+        let msg = OutgoingMessage::GetData(invs);
         if peer.send_msg(msg).is_err() {
             ProcessResult::Ban
         } else {
