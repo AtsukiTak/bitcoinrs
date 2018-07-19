@@ -6,6 +6,7 @@ use error::{Error, ErrorKind};
 
 /// Connection between two peers.
 /// Connection handshake is handled in this layer.
+#[derive(Debug)]
 pub struct Connection {
     socket: SyncSocket,
 
@@ -53,6 +54,10 @@ impl Connection {
 
     pub fn recv_msg(&mut self) -> Result<NetworkMessage, Error> {
         self.socket.recv_msg()
+    }
+
+    pub fn disconnect(&mut self) {
+        unimplemented!();
     }
 }
 
