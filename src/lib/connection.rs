@@ -25,8 +25,8 @@ pub enum OutgoingMessage
 
 pub enum IncomingMessage
 {
-    Block(Block),
     Inv(Vec<Inventory>),
+    Block(Block),
 }
 
 impl Connection
@@ -65,6 +65,9 @@ impl Connection
         })
     }
 
+    /// Send only below message.
+    /// - GetBlocks
+    /// - GetData
     pub fn send_msg(&mut self, msg: OutgoingMessage) -> Result<(), Error>
     {
         let msg = match msg {
