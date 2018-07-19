@@ -22,7 +22,7 @@ impl Node
     /// Send `getblocks` message to given `peer`.
     /// When we start, we need to send `getblocks` message first and then,
     /// we receive `inv` message as response.
-    fn request_blocks(&self, peer: &mut Connection) -> ProcessResult
+    pub fn request_blocks(&self, peer: &mut Connection) -> ProcessResult
     {
         let locator_hashes = self.blockchain.locator_blocks().map(|b| b.bitcoin_hash()).collect();
         let get_blocks_msg = GetBlocksMessage::new(locator_hashes, Sha256dHash::default());
@@ -37,7 +37,7 @@ impl Node
     /// Process incoming `inv` message.
     /// `inv` message often be sent as response of `getblocks` message.
     /// After we receive `inv` message, we send `getdata` message.
-    fn recv_inv(&self, invs: Vec<Inventory>, peer: &mut Connection) -> ProcessResult
+    pub fn recv_inv(&self, invs: Vec<Inventory>, peer: &mut Connection) -> ProcessResult
     {
         // Check received invs all are valid.
         if !check_invs(invs.as_slice(), &self.blockchain) {
@@ -59,7 +59,7 @@ impl Node
         }
     }
 
-    fn recv_block(&mut self, block: Block, peer: &mut Connection) -> ProcessResult
+    pub fn recv_block(&mut self, block: Block, peer: &mut Connection) -> ProcessResult
     {
         info!("Process incoming block");
         match self.blockchain.try_add(StoredBlock::new(block)) {
