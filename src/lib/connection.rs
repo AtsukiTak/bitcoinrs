@@ -56,14 +56,26 @@ impl Connection
         self.socket.send_msg(msg)
     }
 
+    /// Receive only
+    /// - Block
+    /// - Inv
+    /// message.
+    ///
+    /// Wait until above message comes.
     pub fn recv_msg(&mut self) -> Result<NetworkMessage, Error>
     {
-        self.socket.recv_msg()
-    }
-
-    pub fn disconnect(&mut self)
-    {
-        unimplemented!();
+        loop {
+            let msg = self.socket.recv_msg()?;
+            info!("Receive a new message : {:?}", msg);
+            match msg {
+                NetworkMessage::Ping(nonce) => self.send_msg(NetworkMessage::Pong(nonce))?,
+                m @ NetworkMessage::Block(_) => return Ok(m),
+                m @ NetworkMessage::Inv(_) => return Ok(m),
+                _ => {
+                    info!("Discard incoming message.");
+                },
+            }
+        }
     }
 }
 
