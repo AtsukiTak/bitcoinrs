@@ -1,8 +1,13 @@
 use connection::{Connection, IncomingMessage};
 use node::{Node, ProcessResult};
 
-pub fn process(conn: Connection, node: &mut Node)
+pub fn process(mut conn: Connection, node: &mut Node)
 {
+    match node.request_blocks(&mut conn) {
+        ProcessResult::Ack => {},
+        ProcessResult::Ban => return,
+    };
+
     ::std::iter::repeat(()).try_fold(conn, |conn, _| single_process(conn, node));
 }
 
