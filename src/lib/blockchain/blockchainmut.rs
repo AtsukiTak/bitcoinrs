@@ -232,26 +232,34 @@ impl BlockTree
 
             // If there is node wihch has enough confirmation,
             if let Some(enough_confirmed) = find_prior_node(new_node, ENOUGH_CONFIRMATION) {
-                self.len -= 1;
+                // Node which is confirmed enough becomes next head.
+                // And head get stabled.
+                if enough_confirmed.as_ref().unwrap().prev == Some(self.head) {
+                    self.len -= 1;
 
-                let stabled_node_ptr = self.head;
-                let stabled_node = stabled_node_ptr.as_ref().unwrap();
+                    let stabled_node_ptr = self.head;
+                    let stabled_node = stabled_node_ptr.as_ref().unwrap();
 
-                // drop outdated nodes
-                for next in stabled_node.nexts.iter() {
-                    if *next != enough_confirmed {
-                        drop_with_sub_node(*next);
+                    // drop outdated nodes
+                    for next in stabled_node.nexts.iter() {
+                        if *next != enough_confirmed {
+                            drop_with_sub_node(*next);
+                        }
                     }
+
+                    // move almost stable node to a new head
+                    enough_confirmed.as_mut().unwrap().prev = None;
+                    self.head = enough_confirmed;
+
+                    // return head node's block as stabled block
+                    let block = stabled_node.block.clone();
+                    drop(Box::from_raw(stabled_node_ptr));
+                    return Ok((stored_block, Some(StabledBlock(block))));
+                } else if enough_confirmed == self.head {
+                    Ok((stored_block, None))
+                } else {
+                    panic!("Never comes here!!");
                 }
-
-                // move almost stable node to a new head
-                enough_confirmed.as_mut().unwrap().prev = None;
-                self.head = enough_confirmed;
-
-                // return head node's block as stabled block
-                let block = stabled_node.block.clone();
-                drop(Box::from_raw(stabled_node_ptr));
-                return Ok((stored_block, Some(StabledBlock(block))));
             } else {
                 // Successfully added a new block but no stabled block is created.
                 Ok((stored_block, None))
@@ -350,7 +358,7 @@ unsafe fn drop_with_sub_node(node_ptr: *mut BlockTreeNode)
 pub struct BlockTreeIter<'a>
 {
     // to reduce memory allocation, using array with Option instead using Vec
-    nodes: [Option<&'a BlockTreeNode>; ENOUGH_CONFIRMATION],
+    nodes: [Option<&'a BlockTreeNode>; ENOUGH_CONFIRMATION + 1],
     next: usize,
     next_back: usize,
     finished: bool,
@@ -371,10 +379,10 @@ impl<'a> BlockTreeIter<'a>
     }
 }
 
-fn prev_nodes<'a>(node: &'a BlockTreeNode) -> (usize, [Option<&'a BlockTreeNode>; ENOUGH_CONFIRMATION])
+fn prev_nodes<'a>(node: &'a BlockTreeNode) -> (usize, [Option<&'a BlockTreeNode>; ENOUGH_CONFIRMATION + 1])
 {
     if node.prev.is_none() {
-        return (0, [None; ENOUGH_CONFIRMATION]);
+        return (0, [None; ENOUGH_CONFIRMATION + 1]);
     }
 
     let prev = unsafe { node.prev.unwrap().as_ref().unwrap() };
@@ -478,5 +486,31 @@ mod tests
 
         let blocks: Vec<_> = blocktree.iter().map(|d| d.block().clone()).collect();
         assert_eq!(blocks, vec![start_block, next_block]);
+    }
+
+    #[test]
+    fn add_8_blocks_to_blockchainmut()
+    {
+        let block1 = dummy_block(Sha256dHash::default());
+        let block2 = dummy_block(block1.bitcoin_hash());
+        let block3 = dummy_block(block2.bitcoin_hash());
+        let block4 = dummy_block(block3.bitcoin_hash());
+        let block5 = dummy_block(block4.bitcoin_hash());
+        let block6 = dummy_block(block5.bitcoin_hash());
+        let block7 = dummy_block(block6.bitcoin_hash());
+        let block8 = dummy_block(block7.bitcoin_hash());
+
+        let mut blockchain = BlockChainMut::with_genesis(block1);
+
+        blockchain.try_add(block2).unwrap();
+        blockchain.try_add(block3).unwrap();
+        blockchain.try_add(block4).unwrap();
+        blockchain.try_add(block5).unwrap();
+        blockchain.try_add(block6).unwrap();
+        blockchain.try_add(block7).unwrap();
+        blockchain.try_add(block8).unwrap();
+
+        assert_eq!(blockchain.stable_chain.len(), 1);
+        assert_eq!(blockchain.unstable_chain.len(), 7);
     }
 }
