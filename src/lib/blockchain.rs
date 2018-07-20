@@ -434,14 +434,14 @@ impl<'a> DoubleEndedIterator for BlockTreeIter<'a>
             return None;
         }
 
+        let node = self.nodes[self.next_back].unwrap();
+
         if self.next == self.next_back {
             // finish at this call
             self.finished = true;
+        } else {
+            self.next_back -= 1;
         }
-
-        let node = self.nodes[self.next_back].unwrap();
-
-        self.next_back -= 1;
 
         Some(&node.block)
     }
