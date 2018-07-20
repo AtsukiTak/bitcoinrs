@@ -1,8 +1,9 @@
-use bitcoin::blockdata::block::{Block, BlockHeader};
+use bitcoin::blockdata::block::Block;
 use bitcoin::network::serialize::BitcoinHash;
 use bitcoin::util::hash::Sha256dHash;
+use std::sync::Arc;
 
-use super::BlockData;
+use super::{BlockChain, BlockData};
 
 const ENOUGH_CONFIRMATION: usize = 6;
 
@@ -62,10 +63,18 @@ impl BlockChainMut
     /// Oldest block comes first, latest block comes last.
     ///
     /// # Note
-    /// This function may be deleted in future because user can just call `self.iter().collect()`.
+    /// Is there better way to create `Vec`?
     pub fn to_vec(&self) -> Vec<&BlockData>
     {
         self.iter().collect()
+    }
+
+    /// Get immutable `BlockChain`.
+    pub fn freeze(&self) -> BlockChain
+    {
+        BlockChain {
+            blocks: Arc::new(self.iter().cloned().collect()),
+        }
     }
 
     /// Get latest block
