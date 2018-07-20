@@ -26,6 +26,15 @@ fn main()
     let blockchain = BlockChainMut::with_genesis(start_block());
     let mut node = Node::new(blockchain);
 
+    // prepare subscriber
+    let (tx, rx) = ::std::sync::mpsc::sync_channel(8);
+    node.add_subscriber(tx);
+    ::std::thread::spawn(move || {
+        for blockchain in rx {
+            println!("UPDATE BLOCKCHAIN!!! : {:?}", blockchain);
+        }
+    });
+
     process(connection, &mut node);
 }
 
