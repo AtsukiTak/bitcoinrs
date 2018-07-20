@@ -2,12 +2,15 @@ use bitcoin::network::{message_blockdata::{GetBlocksMessage, InvType, Inventory}
 use bitcoin::util::hash::Sha256dHash;
 use bitcoin::blockdata::block::Block;
 
+use std::sync::mpsc::SyncSender;
+
 use connection::{Connection, OutgoingMessage};
-use blockchain::{BlockChainMut, BlockData};
+use blockchain::{BlockChain, BlockChainMut};
 
 pub struct Node
 {
     blockchain: BlockChainMut,
+    subscribers: Vec<SyncSender<BlockChain>>,
 }
 
 pub enum ProcessResult
@@ -21,7 +24,17 @@ impl Node
     /// Create a new `Node`.
     pub fn new(blockchain: BlockChainMut) -> Node
     {
-        Node { blockchain }
+        Node {
+            blockchain,
+            subscribers: Vec::new(),
+        }
+    }
+
+    /// Add a new subscriber.
+    /// Every time when underlying blockchain is updated, you get updated blockchain's snapshot.
+    pub fn add_subscriber(&mut self, subscriber: SyncSender<BlockChain>)
+    {
+        self.subscribers.push(subscriber);
     }
 
     /// Send `getblocks` message to given `peer`.
@@ -68,12 +81,43 @@ impl Node
     {
         info!("Process incoming block");
         match self.blockchain.try_add(block) {
-            Ok(_) => ProcessResult::Ack,
+            Ok(_) => {
+                self.publish_current_blockchain();
+                ProcessResult::Ack
+            },
             Err(_) => {
                 warn!("Peer {:?} send us unwanted block. So we disconnect.", peer);
                 ProcessResult::Ban
             },
         }
+    }
+
+    /// Publish current blockchain's snapshot to subscribers.
+    fn publish_current_blockchain(&mut self)
+    {
+        fn inner(subscribers: &mut Vec<SyncSender<BlockChain>>, idx: usize, blockchain: BlockChain)
+        {
+            if subscribers.len() == idx {
+                return;
+            }
+
+            // Try send blockchain.
+            let send_result = {
+                let subscriber = subscribers.get_mut(idx).unwrap();
+                subscriber.send(blockchain.clone())
+            };
+
+            // call next process.
+            match send_result {
+                Ok(_) => inner(subscribers, idx + 1, blockchain),
+                Err(_) => {
+                    subscribers.swap_remove(idx);
+                    inner(subscribers, idx, blockchain);
+                },
+            }
+        }
+
+        inner(&mut self.subscribers, 0, self.blockchain.freeze())
     }
 }
 
