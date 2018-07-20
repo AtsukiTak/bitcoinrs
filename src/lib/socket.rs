@@ -42,7 +42,7 @@ impl SyncSocket
 
     pub fn send_msg(&mut self, msg: NetworkMessage) -> Result<(), Error>
     {
-        info!("Send new msg to {:?} : {:?}", self.remote_addr, msg);
+        debug!("Send new msg to {:?} : {:?}", self.remote_addr, msg);
         Ok(self.socket.send_message(msg)?)
     }
 

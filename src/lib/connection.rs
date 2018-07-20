@@ -41,7 +41,7 @@ impl Connection
         let remote_version_msg = match socket.recv_msg()? {
             NetworkMessage::Version(v) => v,
             msg => {
-                error!("Expect Version msg but found {:?}", msg);
+                warn!("Expect Version msg but found {:?}", msg);
                 return Err(Error::from(ErrorKind::InvalidPeer));
             },
         };
@@ -53,7 +53,7 @@ impl Connection
         match socket.recv_msg()? {
             NetworkMessage::Verack => {},
             msg => {
-                error!("Expect Verack msg but found {:?}", msg);
+                warn!("Expect Verack msg but found {:?}", msg);
                 return Err(Error::from(ErrorKind::InvalidPeer));
             },
         }
@@ -70,6 +70,7 @@ impl Connection
     /// - GetData
     pub fn send_msg(&mut self, msg: OutgoingMessage) -> Result<(), Error>
     {
+        info!("Send {} to {}", msg, self.socket);
         let msg = match msg {
             OutgoingMessage::GetBlocks(m) => NetworkMessage::GetBlocks(m),
             OutgoingMessage::GetData(m) => NetworkMessage::GetData(m),
@@ -84,18 +85,21 @@ impl Connection
     /// Wait until above message arrives.
     pub fn recv_msg(&mut self) -> Result<IncomingMessage, Error>
     {
-        loop {
+        let incoming_msg = loop {
             let msg = self.socket.recv_msg()?;
-            info!("Receive a new message : {:?}", msg);
             match msg {
                 NetworkMessage::Ping(nonce) => self.socket.send_msg(NetworkMessage::Pong(nonce))?,
-                NetworkMessage::Block(b) => return Ok(IncomingMessage::Block(b)),
-                NetworkMessage::Inv(i) => return Ok(IncomingMessage::Inv(i)),
+                NetworkMessage::Block(b) => break IncomingMessage::Block(b),
+                NetworkMessage::Inv(i) => break IncomingMessage::Inv(i),
                 _ => {
                     info!("Discard incoming message.");
                 },
             }
-        }
+        };
+
+        info!("Receive a new message {} from {}", incoming_msg, self.socket);
+
+        Ok(incoming_msg)
     }
 }
 
@@ -120,3 +124,22 @@ impl ::std::fmt::Display for Connection {
         write!(f, "Connection on socket {}", self.socket)
     }
 }
+
+impl ::std::fmt::Display for IncomingMessage {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
+        match self {
+            IncomingMessage::Block(_) => write!(f, "Block msg"),
+            IncomingMessage::Inv(_) => write!(f, "Inv msg"),
+        }
+    }
+}
+
+impl ::std::fmt::Display for OutgoingMessage {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
+        match self {
+            OutgoingMessage::GetBlocks(_) => write!(f, "GetBlocks msg"),
+            OutgoingMessage::GetData(_) => write!(f, "GetData msg"),
+        }
+    }
+}
+
