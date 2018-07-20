@@ -23,6 +23,11 @@ impl BlockData
     {
         &self.block.header
     }
+
+    pub fn block(&self) -> &Block
+    {
+        &self.block
+    }
 }
 
 impl BitcoinHash for BlockData
