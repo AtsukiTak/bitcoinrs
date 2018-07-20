@@ -66,6 +66,13 @@ impl ::std::fmt::Debug for SyncSocket
     }
 }
 
+impl ::std::fmt::Display for SyncSocket
+{
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
+        write!(f, "SyncSocket to peer {:?}", self.remote_addr.address)
+    }
+}
+
 /*
 struct BitcoinNetworkCodec {
     magic: u32,

@@ -114,3 +114,9 @@ fn version_msg(socket: &SyncSocket, start_height: i32) -> VersionMessage
         relay: false,
     }
 }
+
+impl ::std::fmt::Display for Connection {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
+        write!(f, "Connection on socket {}", self.socket)
+    }
+}
