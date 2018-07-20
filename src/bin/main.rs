@@ -10,7 +10,7 @@ use bitcoin::network::{constants::Network, serialize::BitcoinHash};
 use bitcoin::blockdata::block::{Block, BlockHeader};
 use bitcoin::util::hash::Sha256dHash;
 
-use libbitcoin_observer::{blockchain::BlockChain, connection::Connection, node::Node, process::process,
+use libbitcoin_observer::{blockchain::BlockChainMut, connection::Connection, node::Node, process::process,
                           socket::SyncSocket};
 
 const DEMO_PEER: &str = "172.105.194.235:8333";
@@ -23,7 +23,7 @@ fn main()
     let connection = Connection::initialize(socket, 0).unwrap();
     info!("Connected");
 
-    let blockchain = BlockChain::with_genesis(start_block());
+    let blockchain = BlockChainMut::with_genesis(start_block());
     let mut node = Node::new(blockchain);
 
     process(connection, &mut node);

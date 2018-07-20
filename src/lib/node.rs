@@ -3,11 +3,11 @@ use bitcoin::util::hash::Sha256dHash;
 use bitcoin::blockdata::block::Block;
 
 use connection::{Connection, OutgoingMessage};
-use blockchain::{BlockChain, StoredBlock};
+use blockchain::{BlockChainMut, BlockData};
 
 pub struct Node
 {
-    blockchain: BlockChain,
+    blockchain: BlockChainMut,
 }
 
 pub enum ProcessResult
@@ -19,7 +19,7 @@ pub enum ProcessResult
 impl Node
 {
     /// Create a new `Node`.
-    pub fn new(blockchain: BlockChain) -> Node
+    pub fn new(blockchain: BlockChainMut) -> Node
     {
         Node { blockchain }
     }
@@ -77,7 +77,7 @@ impl Node
     }
 }
 
-fn check_invs(invs: &[Inventory], blockchain: &BlockChain) -> bool
+fn check_invs(invs: &[Inventory], blockchain: &BlockChainMut) -> bool
 {
     for inv in invs.iter() {
         // Check inventory's type.
