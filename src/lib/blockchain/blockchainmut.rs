@@ -14,6 +14,7 @@ pub struct BlockChainMut
     unstable_chain: UnstableBlockChain,
 }
 
+#[derive(Debug)]
 pub struct InvalidBlock;
 
 impl BlockChainMut
@@ -153,8 +154,6 @@ impl UnstableBlockChain
 
     fn try_add(&mut self, block: BlockData) -> Result<(&BlockData, Option<StabledBlock>), InvalidBlock>
     {
-        debug!("Try to add a new block");
-
         self.tree.try_add(block)
     }
 
@@ -176,6 +175,7 @@ struct BlockTree
     len: usize,
 }
 
+#[derive(Debug)]
 struct BlockTreeNode
 {
     prev: Option<*mut BlockTreeNode>,
@@ -219,7 +219,7 @@ impl BlockTree
             // Append given block to prev node
             let new_node = append_block_to_node(node, block);
 
-            // If new_node is a new tip, replace it
+            // If new_node is a new tip, replace
             let old_tip_depth = depth_from_root(self.last);
             let new_node_depth = depth_from_root(new_node);
             if old_tip_depth < new_node_depth {
@@ -319,7 +319,7 @@ unsafe fn depth_from_root(node_ptr: *mut BlockTreeNode) -> usize
 {
     let node = node_ptr.as_ref().unwrap();
     if let Some(prev) = node.prev {
-        depth_from_root(prev)
+        1 + depth_from_root(prev)
     } else {
         0
     }
@@ -380,7 +380,7 @@ fn prev_nodes<'a>(node: &'a BlockTreeNode) -> (usize, [Option<&'a BlockTreeNode>
     let prev = unsafe { node.prev.unwrap().as_ref().unwrap() };
     let (count, mut prev_nodes) = prev_nodes(prev);
     prev_nodes[count] = Some(prev);
-    (count, prev_nodes)
+    (count + 1, prev_nodes)
 }
 
 impl<'a> Iterator for BlockTreeIter<'a>
@@ -424,5 +424,59 @@ impl<'a> DoubleEndedIterator for BlockTreeIter<'a>
         }
 
         Some(&node.block)
+    }
+}
+
+/// TODO: Should test re-org case
+#[cfg(test)]
+mod tests
+{
+    use super::*;
+    use bitcoin::blockdata::block::BlockHeader;
+
+    fn dummy_block(prev_hash: Sha256dHash) -> Block
+    {
+        let header = BlockHeader {
+            version: 1,
+            prev_blockhash: prev_hash,
+            merkle_root: Sha256dHash::default(),
+            time: 0,
+            bits: 0,
+            nonce: 0,
+        };
+        Block {
+            header,
+            txdata: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn blockchainmut_try_add()
+    {
+        let start_block = dummy_block(Sha256dHash::default());
+        let next_block = dummy_block(start_block.bitcoin_hash());
+        let mut blockchain = BlockChainMut::with_genesis(start_block.clone());
+
+        blockchain.try_add(next_block.clone()).unwrap(); // Should success.
+
+        assert_eq!(blockchain.len(), 2);
+
+        let blocks: Vec<_> = blockchain.iter().map(|d| d.block().clone()).collect();
+        assert_eq!(blocks, vec![start_block, next_block]);
+    }
+
+    #[test]
+    fn blocktree_try_add()
+    {
+        let start_block = dummy_block(Sha256dHash::default());
+        let next_block = dummy_block(start_block.bitcoin_hash());
+        let mut blocktree = BlockTree::with_genesis(BlockData::new(start_block.clone()));
+
+        blocktree.try_add(BlockData::new(next_block.clone())).unwrap(); // Should success.
+
+        assert_eq!(blocktree.len(), 2);
+
+        let blocks: Vec<_> = blocktree.iter().map(|d| d.block().clone()).collect();
+        assert_eq!(blocks, vec![start_block, next_block]);
     }
 }
