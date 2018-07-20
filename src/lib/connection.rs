@@ -119,14 +119,18 @@ fn version_msg(socket: &SyncSocket, start_height: i32) -> VersionMessage
     }
 }
 
-impl ::std::fmt::Display for Connection {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
+impl ::std::fmt::Display for Connection
+{
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
+    {
         write!(f, "Connection on socket {}", self.socket)
     }
 }
 
-impl ::std::fmt::Display for IncomingMessage {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
+impl ::std::fmt::Display for IncomingMessage
+{
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
+    {
         match self {
             IncomingMessage::Block(_) => write!(f, "Block msg"),
             IncomingMessage::Inv(_) => write!(f, "Inv msg"),
@@ -134,12 +138,13 @@ impl ::std::fmt::Display for IncomingMessage {
     }
 }
 
-impl ::std::fmt::Display for OutgoingMessage {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error> {
+impl ::std::fmt::Display for OutgoingMessage
+{
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
+    {
         match self {
             OutgoingMessage::GetBlocks(_) => write!(f, "GetBlocks msg"),
             OutgoingMessage::GetData(_) => write!(f, "GetData msg"),
         }
     }
 }
-
