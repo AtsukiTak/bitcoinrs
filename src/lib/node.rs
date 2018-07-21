@@ -2,7 +2,7 @@ use bitcoin::network::{message_blockdata::{GetBlocksMessage, InvType, Inventory}
 use bitcoin::util::hash::Sha256dHash;
 use bitcoin::blockdata::block::Block;
 
-use std::sync::mpsc::SyncSender;
+use std::sync::mpsc::{SyncSender, TrySendError};
 
 use connection::{Connection, OutgoingMessage};
 use blockchain::{BlockChain, BlockChainMut};
@@ -104,13 +104,14 @@ impl Node
             // Try send blockchain.
             let send_result = {
                 let subscriber = subscribers.get_mut(idx).unwrap();
-                subscriber.send(blockchain.clone())
+                subscriber.try_send(blockchain.clone())
             };
 
             // call next process.
             match send_result {
-                Ok(_) => inner(subscribers, idx + 1, blockchain),
-                Err(_) => {
+                // If channel is full, simply discard latest update.
+                Ok(_) | Err(TrySendError::Full(_)) => inner(subscribers, idx + 1, blockchain),
+                Err(TrySendError::Disconnected(_)) => {
                     subscribers.swap_remove(idx);
                     inner(subscribers, idx, blockchain);
                 },
