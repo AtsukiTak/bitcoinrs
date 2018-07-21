@@ -22,10 +22,10 @@ pub enum ProcessResult
 impl Node
 {
     /// Create a new `Node`.
-    pub fn new(blockchain: BlockChainMut) -> Node
+    pub fn with_start(start_block: Block) -> Node
     {
         Node {
-            blockchain,
+            blockchain: BlockChainMut::with_start(start_block),
             subscribers: Vec::new(),
         }
     }
