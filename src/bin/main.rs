@@ -29,7 +29,7 @@ fn main()
     node.add_subscriber(tx);
     ::std::thread::spawn(move || {
         for blockchain in rx {
-            println!("UPDATE BLOCKCHAIN!!! : {:?}", blockchain);
+            println!("UPDATE BLOCKCHAIN!!! Current height is {}", blockchain.len());
         }
     });
 

@@ -20,6 +20,8 @@ pub struct InvalidBlock;
 impl BlockChainMut
 {
     /// Create a new `BlockChainMut` struct with main net genesis block.
+    /// If you want another network (such as test network) genesis block,
+    /// please use `with_start` function.
     pub fn new() -> BlockChainMut
     {
         BlockChainMut::with_start(genesis_block(Network::Bitcoin))

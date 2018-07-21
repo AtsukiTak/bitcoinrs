@@ -1,11 +1,12 @@
 use bitcoin::blockdata::block::{Block, BlockHeader};
 use bitcoin::network::serialize::BitcoinHash;
 use bitcoin::util::hash::Sha256dHash;
+use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BlockData
 {
-    block: Block,
+    block: Arc<Block>,
     hash: Sha256dHash, // Just for cache.
 }
 
@@ -15,7 +16,7 @@ impl BlockData
     {
         BlockData {
             hash: block.bitcoin_hash(),
-            block,
+            block: Arc::new(block),
         }
     }
 
