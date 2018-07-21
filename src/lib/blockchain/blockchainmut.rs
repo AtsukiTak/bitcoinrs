@@ -22,10 +22,7 @@ impl BlockChainMut
     /// Create a new `BlockChainMut` struct with main net genesis block.
     pub fn new() -> BlockChainMut
     {
-        BlockChainMut {
-            stable_chain: StableBlockChain::new(),
-            unstable_chain: UnstableBlockChain::with_start(BlockData::new(genesis_block(Network::Bitcoin))),
-        }
+        BlockChainMut::with_start(genesis_block(Network::Bitcoin))
     }
 
     /// Creaet a new `BlockChainMut` struct with start block.

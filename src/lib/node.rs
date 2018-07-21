@@ -21,7 +21,16 @@ pub enum ProcessResult
 
 impl Node
 {
-    /// Create a new `Node`.
+    /// Create a new `Node` with genesis block.
+    pub fn new() -> Node
+    {
+        Node {
+            blockchain: BlockChainMut::new(),
+            subscribers: Vec::new(),
+        }
+    }
+
+    /// Create a new `Node` with `start_block`.
     pub fn with_start(start_block: Block) -> Node
     {
         Node {
