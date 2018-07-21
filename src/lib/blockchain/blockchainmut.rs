@@ -19,16 +19,13 @@ pub struct InvalidBlock;
 
 impl BlockChainMut
 {
-    /// Creaet a new `BlockChainMut` struct with genesis block.
-    /// Note that the term of genesis block in here is not same  with bitcoin's genesis block.
-    /// It just root block of returned `BlockChainMut`.
-    /// Given genesis block may be different from bitcoin's genesis block.
-    /// And also note that given genesis block **MUST** be stable one.
-    pub fn with_genesis(block: Block) -> BlockChainMut
+    /// Creaet a new `BlockChainMut` struct with start block.
+    /// Note that given start block **MUST** be stable one.
+    pub fn with_start(block: Block) -> BlockChainMut
     {
         BlockChainMut {
             stable_chain: StableBlockChain::new(),
-            unstable_chain: UnstableBlockChain::with_genesis(BlockData::new(block)),
+            unstable_chain: UnstableBlockChain::with_start(BlockData::new(block)),
         }
     }
 
@@ -80,11 +77,11 @@ impl BlockChainMut
 
     /// Get latest block
     ///
-    /// The key of this function is `unwrap`; since there are always genesis block at least,
+    /// The key of this function is `unwrap`; since there are always start block at least,
     /// we can call `unwrap`.
     pub fn latest_block(&self) -> &BlockData
     {
-        self.iter().rev().next().unwrap() // since there are always genesis block
+        self.iter().rev().next().unwrap() // since there are always start block
     }
 
     pub fn get_block(&self, hash: &Sha256dHash) -> Option<&BlockData>
@@ -140,10 +137,10 @@ struct UnstableBlockChain
 
 impl UnstableBlockChain
 {
-    fn with_genesis(block: BlockData) -> UnstableBlockChain
+    fn with_start(block: BlockData) -> UnstableBlockChain
     {
         UnstableBlockChain {
-            tree: BlockTree::with_genesis(block),
+            tree: BlockTree::with_start(block),
         }
     }
 
@@ -188,7 +185,7 @@ struct BlockTreeNode
 
 impl BlockTree
 {
-    fn with_genesis(block: BlockData) -> BlockTree
+    fn with_start(block: BlockData) -> BlockTree
     {
         let node = BlockTreeNode {
             prev: None,
@@ -463,7 +460,7 @@ mod tests
     {
         let start_block = dummy_block(Sha256dHash::default());
         let next_block = dummy_block(start_block.bitcoin_hash());
-        let mut blockchain = BlockChainMut::with_genesis(start_block.clone());
+        let mut blockchain = BlockChainMut::with_start(start_block.clone());
 
         blockchain.try_add(next_block.clone()).unwrap(); // Should success.
 
@@ -478,7 +475,7 @@ mod tests
     {
         let start_block = dummy_block(Sha256dHash::default());
         let next_block = dummy_block(start_block.bitcoin_hash());
-        let mut blocktree = BlockTree::with_genesis(BlockData::new(start_block.clone()));
+        let mut blocktree = BlockTree::with_start(BlockData::new(start_block.clone()));
 
         blocktree.try_add(BlockData::new(next_block.clone())).unwrap(); // Should success.
 
@@ -500,7 +497,7 @@ mod tests
         let block7 = dummy_block(block6.bitcoin_hash());
         let block8 = dummy_block(block7.bitcoin_hash());
 
-        let mut blockchain = BlockChainMut::with_genesis(block1);
+        let mut blockchain = BlockChainMut::with_start(block1);
 
         blockchain.try_add(block2).unwrap();
         blockchain.try_add(block3).unwrap();

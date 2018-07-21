@@ -23,7 +23,7 @@ fn main()
     let connection = Connection::initialize(socket, 0).unwrap();
     info!("Connected");
 
-    let blockchain = BlockChainMut::with_genesis(start_block());
+    let blockchain = BlockChainMut::with_start(start_block());
     let mut node = Node::new(blockchain);
 
     // prepare subscriber
