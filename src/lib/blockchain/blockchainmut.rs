@@ -1,5 +1,5 @@
-use bitcoin::blockdata::block::Block;
-use bitcoin::network::serialize::BitcoinHash;
+use bitcoin::blockdata::{block::Block, constants::genesis_block};
+use bitcoin::network::{constants::Network, serialize::BitcoinHash};
 use bitcoin::util::hash::Sha256dHash;
 use std::sync::Arc;
 
@@ -19,6 +19,15 @@ pub struct InvalidBlock;
 
 impl BlockChainMut
 {
+    /// Create a new `BlockChainMut` struct with main net genesis block.
+    pub fn new() -> BlockChainMut
+    {
+        BlockChainMut {
+            stable_chain: StableBlockChain::new(),
+            unstable_chain: UnstableBlockChain::with_start(BlockData::new(genesis_block(Network::Bitcoin))),
+        }
+    }
+
     /// Creaet a new `BlockChainMut` struct with start block.
     /// Note that given start block **MUST** be stable one.
     pub fn with_start(block: Block) -> BlockChainMut
