@@ -1,4 +1,4 @@
-use bitcoin::blockdata::{block::Block, constants::genesis_block};
+use bitcoin::blockdata::{block::{Block, BlockHeader}, constants::genesis_block};
 use bitcoin::network::{constants::Network, serialize::BitcoinHash};
 use bitcoin::util::hash::Sha256dHash;
 use std::sync::Arc;
@@ -24,16 +24,16 @@ impl BlockChainMut
     /// please use `with_start` function.
     pub fn new() -> BlockChainMut
     {
-        BlockChainMut::with_start(genesis_block(Network::Bitcoin))
+        BlockChainMut::with_start(BlockData::new_full_block(genesis_block(Network::Bitcoin)))
     }
 
     /// Creaet a new `BlockChainMut` struct with start block.
     /// Note that given start block **MUST** be stable one.
-    pub fn with_start(block: Block) -> BlockChainMut
+    pub fn with_start(block: BlockData) -> BlockChainMut
     {
         BlockChainMut {
             stable_chain: StableBlockChain::new(),
-            unstable_chain: UnstableBlockChain::with_start(BlockData::new(block)),
+            unstable_chain: UnstableBlockChain::with_start(block),
         }
     }
 
@@ -45,15 +45,25 @@ impl BlockChainMut
 
     /// Try to add a new block.
     /// If success, reference to given block is returned.
-    pub fn try_add(&mut self, block: Block) -> Result<&BlockData, InvalidBlock>
+    pub fn try_add(&mut self, block: BlockData) -> Result<&BlockData, InvalidBlock>
     {
         // TODO : Check PoW of given block
 
-        let (stored_block, maybe_stabled) = self.unstable_chain.try_add(BlockData::new(block))?;
+        let (stored_block, maybe_stabled) = self.unstable_chain.try_add(block)?;
         if let Some(stabled) = maybe_stabled {
             self.stable_chain.add_block(stabled);
         }
         Ok(stored_block)
+    }
+
+    pub fn try_add_header(&mut self, header: BlockHeader) -> Result<&BlockData, InvalidBlock>
+    {
+        self.try_add(BlockData::new_header_only(header))
+    }
+
+    pub fn try_add_block(&mut self, block: Block) -> Result<&BlockData, InvalidBlock>
+    {
+        self.try_add(BlockData::new_full_block(block))
     }
 
     /// Get iterator representing current best block chain.
@@ -92,6 +102,7 @@ impl BlockChainMut
         self.iter().rev().next().unwrap() // since there are always start block
     }
 
+    /// Get block whose hash is exactly same with given hash.
     pub fn get_block(&self, hash: &Sha256dHash) -> Option<&BlockData>
     {
         self.iter().find(|b| b.bitcoin_hash() == *hash)
