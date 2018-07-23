@@ -1,7 +1,7 @@
 use bitcoin::blockdata::{block::{Block, BlockHeader}, constants::genesis_block};
 use bitcoin::network::{constants::Network, serialize::BitcoinHash};
 use bitcoin::util::hash::Sha256dHash;
-use std::sync::Arc;
+use std::{marker::PhantomData, sync::Arc};
 
 use super::{BlockChain, BlockData};
 
@@ -72,6 +72,13 @@ impl BlockChainMut
     {
         let unstable_blocks = self.unstable_chain.iter();
         let stable_blocks = self.stable_chain.blocks.iter();
+        stable_blocks.chain(unstable_blocks)
+    }
+
+    pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut BlockData> + DoubleEndedIterator
+    {
+        let unstable_blocks = self.unstable_chain.iter_mut();
+        let stable_blocks = self.stable_chain.blocks.iter_mut();
         stable_blocks.chain(unstable_blocks)
     }
 
@@ -173,9 +180,18 @@ impl UnstableBlockChain
         self.tree.try_add(block)
     }
 
-    fn iter(&self) -> BlockTreeIter
+    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a BlockData> + DoubleEndedIterator
     {
-        self.tree.iter()
+        self.tree
+            .iter()
+            .map(|node_ptr| unsafe { &node_ptr.as_ref().unwrap().block })
+    }
+
+    fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut BlockData> + DoubleEndedIterator
+    {
+        self.tree
+            .iter()
+            .map(|node_ptr| unsafe { &mut node_ptr.as_mut().unwrap().block })
     }
 }
 
@@ -285,7 +301,7 @@ impl BlockTree
 
     fn iter(&self) -> BlockTreeIter
     {
-        unsafe { BlockTreeIter::from_last_node(self.last.as_ref().unwrap()) }
+        unsafe { BlockTreeIter::from_last_node(self.last) }
     }
 }
 
@@ -371,10 +387,11 @@ unsafe fn drop_with_sub_node(node_ptr: *mut BlockTreeNode)
     drop(Box::from_raw(node_ptr));
 }
 
-pub struct BlockTreeIter<'a>
+struct BlockTreeIter<'a>
 {
     // to reduce memory allocation, using array with Option instead using Vec
-    nodes: [Option<&'a BlockTreeNode>; ENOUGH_CONFIRMATION + 1],
+    nodes: [Option<*mut BlockTreeNode>; ENOUGH_CONFIRMATION + 1],
+    _lifetime: PhantomData<&'a BlockTreeNode>,
     next: usize,
     next_back: usize,
     finished: bool,
@@ -382,12 +399,14 @@ pub struct BlockTreeIter<'a>
 
 impl<'a> BlockTreeIter<'a>
 {
-    fn from_last_node(last: &'a BlockTreeNode) -> BlockTreeIter<'a>
+    // Make sure `last` is not null
+    unsafe fn from_last_node(last: *mut BlockTreeNode) -> BlockTreeIter<'a>
     {
         let (count, mut prev_nodes) = prev_nodes(last);
         prev_nodes[count] = Some(last);
         BlockTreeIter {
             nodes: prev_nodes,
+            _lifetime: PhantomData,
             next: 0,
             next_back: count,
             finished: false,
@@ -395,21 +414,24 @@ impl<'a> BlockTreeIter<'a>
     }
 }
 
-fn prev_nodes<'a>(node: &'a BlockTreeNode) -> (usize, [Option<&'a BlockTreeNode>; ENOUGH_CONFIRMATION + 1])
+// Make sure that `node_ptr` is not null
+unsafe fn prev_nodes(node_ptr: *mut BlockTreeNode) -> (usize, [Option<*mut BlockTreeNode>; ENOUGH_CONFIRMATION + 1])
 {
+    let node = node_ptr.as_ref().unwrap();
     if node.prev.is_none() {
         return (0, [None; ENOUGH_CONFIRMATION + 1]);
     }
 
-    let prev = unsafe { node.prev.unwrap().as_ref().unwrap() };
-    let (count, mut prev_nodes) = prev_nodes(prev);
-    prev_nodes[count] = Some(prev);
-    (count + 1, prev_nodes)
+    // Get prev node's prev nodes.
+    let prev_node_ptr = node.prev.unwrap();
+    let (count, mut prev_prev_nodes) = prev_nodes(prev_node_ptr);
+    prev_prev_nodes[count] = Some(prev_node_ptr);
+    (count + 1, prev_prev_nodes)
 }
 
 impl<'a> Iterator for BlockTreeIter<'a>
 {
-    type Item = &'a BlockData;
+    type Item = *mut BlockTreeNode;
 
     fn next(&mut self) -> Option<Self::Item>
     {
@@ -426,7 +448,7 @@ impl<'a> Iterator for BlockTreeIter<'a>
 
         self.next += 1;
 
-        Some(&node.block)
+        Some(node)
     }
 }
 
@@ -447,7 +469,7 @@ impl<'a> DoubleEndedIterator for BlockTreeIter<'a>
             self.next_back -= 1;
         }
 
-        Some(&node.block)
+        Some(node)
     }
 }
 
