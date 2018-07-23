@@ -110,9 +110,14 @@ impl BlockChainMut
     }
 
     /// Get block whose hash is exactly same with given hash.
-    pub fn get_block(&self, hash: &Sha256dHash) -> Option<&BlockData>
+    pub fn get_block(&self, hash: Sha256dHash) -> Option<&BlockData>
     {
-        self.iter().find(|b| b.bitcoin_hash() == *hash)
+        self.iter().find(move |b| b.bitcoin_hash() == hash)
+    }
+
+    pub fn get_block_mut(&mut self, hash: Sha256dHash) -> Option<&mut BlockData>
+    {
+        self.iter_mut().find(move |b| b.bitcoin_hash() == hash)
     }
 
     /// Get locator blocks iterator.
