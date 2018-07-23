@@ -1,4 +1,5 @@
-use bitcoin::network::{message_blockdata::{GetBlocksMessage, InvType, Inventory}, serialize::BitcoinHash};
+use bitcoin::network::{message_blockdata::{GetBlocksMessage, GetHeadersMessage, InvType, Inventory},
+                       serialize::BitcoinHash};
 use bitcoin::util::hash::Sha256dHash;
 use bitcoin::blockdata::block::Block;
 
@@ -44,6 +45,22 @@ impl Node
     pub fn add_subscriber(&mut self, subscriber: SyncSender<BlockChain>)
     {
         self.subscribers.push(subscriber);
+    }
+
+    /// Send `getheaders` message to given `peer`.
+    /// When we start, we need to send `getblocks` message first and then,
+    /// we receive `inv` message as response.
+    /// See `process::initial_block_download` for more detail.
+    pub fn request_headers(&self, peer: &mut Connection) -> ProcessResult
+    {
+        let locator_hashes = self.blockchain.locator_blocks().map(|b| b.bitcoin_hash()).collect();
+        let get_headers_msg = GetHeadersMessage::new(locator_hashes, Sha256dHash::default());
+        let network_msg = OutgoingMessage::GetHeaders(get_headers_msg);
+        if peer.send_msg(network_msg).is_ok() {
+            ProcessResult::Ack
+        } else {
+            ProcessResult::Ban
+        }
     }
 
     /// Send `getblocks` message to given `peer`.

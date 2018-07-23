@@ -1,5 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
-use bitcoin::network::{constants, message::NetworkMessage, message_blockdata::{GetBlocksMessage, Inventory},
+use bitcoin::network::{constants, message::NetworkMessage,
+                       message_blockdata::{GetBlocksMessage, GetHeadersMessage, Inventory},
                        message_network::VersionMessage};
 use bitcoin::blockdata::block::Block;
 
@@ -19,6 +20,7 @@ pub struct Connection
 
 pub enum OutgoingMessage
 {
+    GetHeaders(GetHeadersMessage),
     GetBlocks(GetBlocksMessage),
     GetData(Vec<Inventory>),
 }
@@ -72,6 +74,7 @@ impl Connection
     {
         info!("Send {} to {}", msg, self.socket);
         let msg = match msg {
+            OutgoingMessage::GetHeaders(m) => NetworkMessage::GetHeaders(m),
             OutgoingMessage::GetBlocks(m) => NetworkMessage::GetBlocks(m),
             OutgoingMessage::GetData(m) => NetworkMessage::GetData(m),
         };
@@ -143,6 +146,7 @@ impl ::std::fmt::Display for OutgoingMessage
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
     {
         match self {
+            OutgoingMessage::GetHeaders(_) => write!(f, "GetHeaders msg"),
             OutgoingMessage::GetBlocks(_) => write!(f, "GetBlocks msg"),
             OutgoingMessage::GetData(_) => write!(f, "GetData msg"),
         }
