@@ -1,4 +1,4 @@
-use bitcoin::network::{message_blockdata::{GetBlocksMessage, GetHeadersMessage, InvType, Inventory},
+use bitcoin::network::{message_blockdata::{GetHeadersMessage, InvType, Inventory},
                        serialize::BitcoinHash};
 use bitcoin::util::hash::Sha256dHash;
 use bitcoin::blockdata::block::Block;
@@ -60,21 +60,6 @@ impl Node
             ProcessResult::Ack
         } else {
             ProcessResult::Ban
-        }
-    }
-
-    /// Send `getblocks` message to given `peer`.
-    /// When we start, we need to send `getblocks` message first and then,
-    /// we receive `inv` message as response.
-    pub fn request_blocks(&self, peer: &mut Connection) -> ProcessResult
-    {
-        let locator_hashes = self.blockchain.locator_blocks().map(|b| b.bitcoin_hash()).collect();
-        let get_blocks_msg = GetBlocksMessage::new(locator_hashes, Sha256dHash::default());
-        let network_msg = OutgoingMessage::GetBlocks(get_blocks_msg);
-        if peer.send_msg(network_msg).is_err() {
-            ProcessResult::Ban
-        } else {
-            ProcessResult::Ack
         }
     }
 
