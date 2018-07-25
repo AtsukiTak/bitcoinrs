@@ -28,6 +28,7 @@ pub enum IncomingMessage
 {
     Headers(Vec<LoneBlockHeader>),
     Block(Block),
+    Inv(Vec<Inventory>),
 }
 
 impl Connection
@@ -92,6 +93,7 @@ impl Connection
                 NetworkMessage::Ping(nonce) => self.socket.send_msg(NetworkMessage::Pong(nonce))?,
                 NetworkMessage::Headers(h) => break IncomingMessage::Headers(h),
                 NetworkMessage::Block(b) => break IncomingMessage::Block(b),
+                NetworkMessage::Inv(i) => break IncomingMessage::Inv(i),
                 _ => {
                     info!("Discard incoming message.");
                 },
@@ -135,6 +137,7 @@ impl ::std::fmt::Display for IncomingMessage
         match self {
             IncomingMessage::Block(_) => write!(f, "Block msg"),
             IncomingMessage::Headers(_) => write!(f, "Headers msg"),
+            IncomingMessage::Inv(_) => write!(f, "Inv msg"),
         }
     }
 }
