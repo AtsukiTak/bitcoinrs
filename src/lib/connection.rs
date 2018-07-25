@@ -2,7 +2,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bitcoin::network::{constants, message::NetworkMessage,
                        message_blockdata::{GetHeadersMessage, Inventory},
                        message_network::VersionMessage};
-use bitcoin::blockdata::block::Block;
+use bitcoin::blockdata::block::{Block, LoneBlockHeader};
 
 use socket::SyncSocket;
 use error::{Error, ErrorKind};
@@ -26,7 +26,7 @@ pub enum OutgoingMessage
 
 pub enum IncomingMessage
 {
-    Inv(Vec<Inventory>),
+    Headers(Vec<LoneBlockHeader>),
     Block(Block),
 }
 
@@ -90,8 +90,8 @@ impl Connection
             let msg = self.socket.recv_msg()?;
             match msg {
                 NetworkMessage::Ping(nonce) => self.socket.send_msg(NetworkMessage::Pong(nonce))?,
+                NetworkMessage::Headers(h) => break IncomingMessage::Headers(h),
                 NetworkMessage::Block(b) => break IncomingMessage::Block(b),
-                NetworkMessage::Inv(i) => break IncomingMessage::Inv(i),
                 _ => {
                     info!("Discard incoming message.");
                 },
@@ -134,7 +134,7 @@ impl ::std::fmt::Display for IncomingMessage
     {
         match self {
             IncomingMessage::Block(_) => write!(f, "Block msg"),
-            IncomingMessage::Inv(_) => write!(f, "Inv msg"),
+            IncomingMessage::Headers(_) => write!(f, "Headers msg"),
         }
     }
 }

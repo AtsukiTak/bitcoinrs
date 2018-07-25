@@ -10,30 +10,26 @@ use bitcoin::network::{constants::Network, serialize::BitcoinHash};
 use bitcoin::blockdata::block::{Block, BlockHeader};
 use bitcoin::util::hash::Sha256dHash;
 
-use libbitcoin_observer::{connection::Connection, node::Node, process::process, socket::SyncSocket};
+use libbitcoin_observer::{blockchain::{BlockChainMut, BlockData}, connection::Connection,
+                          process::initial_block_download, socket::SyncSocket};
 
 const DEMO_PEER: &str = "172.105.194.235:8333";
+const LOCAL_PEER: &str = "10.0.1.16:8333";
 
 fn main()
 {
     env_logger::init();
 
-    let socket = SyncSocket::open(&DEMO_PEER.parse().unwrap(), Network::Bitcoin).unwrap();
+    let socket = SyncSocket::open(&LOCAL_PEER.parse().unwrap(), Network::Bitcoin).unwrap();
     let connection = Connection::initialize(socket, 0).unwrap();
     info!("Connected");
 
-    let mut node = Node::with_start(start_block());
+    let blockchain = BlockChainMut::with_start(BlockData::new_full_block(start_block()));
 
-    // prepare subscriber
-    let (tx, rx) = ::std::sync::mpsc::sync_channel(8);
-    node.add_subscriber(tx);
-    ::std::thread::spawn(move || {
-        for blockchain in rx {
-            println!("UPDATE BLOCKCHAIN!!! Current height is {}", blockchain.len());
-        }
-    });
-
-    process(connection, &mut node);
+    match initial_block_download(connection, blockchain) {
+        Ok((conn, blockchain)) => println!("ok"),
+        Err(blockchain) => println!("err"),
+    }
 }
 
 fn start_block() -> Block
