@@ -51,17 +51,18 @@ impl SyncSocket
         self.socket.user_agent.as_str()
     }
 
-    pub fn send_msg(&mut self, msg: NetworkMessage) -> Result<(), Error>
+    pub fn send_msg(mut self, msg: NetworkMessage) -> Result<Self, Error>
     {
         debug!("Send new msg to {:?} : {:?}", self.remote_addr, msg);
-        Ok(self.socket.send_message(msg)?)
+        self.socket.send_message(msg)?;
+        Ok(self)
     }
 
-    pub fn recv_msg(&mut self) -> Result<NetworkMessage, Error>
+    pub fn recv_msg(mut self) -> Result<(NetworkMessage, Self), Error>
     {
         let msg = self.socket.receive_message()?;
         debug!("Receive a new msg from {:?} : {:?}", self.remote_addr, msg);
-        Ok(msg)
+        Ok((msg, self))
     }
 }
 
