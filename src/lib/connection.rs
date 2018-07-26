@@ -2,8 +2,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bitcoin::network::{constants, message::NetworkMessage, message_blockdata::{GetHeadersMessage, Inventory},
                        message_network::VersionMessage};
 use bitcoin::blockdata::block::{Block, LoneBlockHeader};
+use futures::future::{loop_fn, result, Future, Loop};
 
-use socket::SyncSocket;
+use socket::AsyncSocket;
 use error::{Error, ErrorKind};
 
 /// Connection between two peers.
@@ -11,7 +12,7 @@ use error::{Error, ErrorKind};
 #[derive(Debug)]
 pub struct Connection
 {
-    socket: SyncSocket,
+    socket: AsyncSocket,
 
     remote_version_msg: VersionMessage,
     local_version_msg: VersionMessage,
@@ -32,46 +33,47 @@ pub enum IncomingMessage
 
 impl Connection
 {
-    pub fn initialize(mut socket: SyncSocket, start_height: i32) -> Result<Connection, Error>
+    pub fn initialize(socket: AsyncSocket, start_height: i32) -> impl Future<Item = Connection, Error = Error>
     {
         // Send Version msg
         let local_version_msg = version_msg(&socket, start_height);
-        let socket = socket.send_msg(NetworkMessage::Version(local_version_msg.clone()))?;
-
-        // Receive Version msg
-        let (recv_msg, socket) = socket.recv_msg()?;
-        let remote_version_msg = match recv_msg {
-            NetworkMessage::Version(v) => v,
-            msg => {
-                warn!("Expect Version msg but found {:?}", msg);
-                return Err(Error::from(ErrorKind::InvalidPeer));
-            },
-        };
-
-        // Send Verack msg
-        let socket = socket.send_msg(NetworkMessage::Verack)?;
-
-        // Receive Verack msg
-        let (recv_msg, socket) = socket.recv_msg()?;
-        match recv_msg {
-            NetworkMessage::Verack => {},
-            msg => {
-                warn!("Expect Verack msg but found {:?}", msg);
-                return Err(Error::from(ErrorKind::InvalidPeer));
-            },
-        }
-
-        Ok(Connection {
-            socket,
-            remote_version_msg,
-            local_version_msg,
-        })
+        socket
+            .send_msg(NetworkMessage::Version(local_version_msg.clone()))
+            .and_then(|socket| socket.recv_msg())
+            .and_then(|(msg, socket)| {
+                // Receive Version msg
+                match msg {
+                    NetworkMessage::Version(v) => Ok((v, socket)),
+                    msg => {
+                        warn!("Expect Version msg but found {:?}", msg);
+                        Err(Error::from(ErrorKind::InvalidPeer))
+                    },
+                }
+            })
+            .and_then(|(remote_v, socket)| socket.send_msg(NetworkMessage::Verack).map(|s| (s, remote_v)))
+            .and_then(|(socket, remote_v)| socket.recv_msg().map(|(msg, s)| (msg, s, remote_v)))
+            .and_then(move |(msg, socket, remote_v)| {
+                // Receive Verack msg
+                match msg {
+                    NetworkMessage::Verack => {
+                        Ok(Connection {
+                            socket,
+                            remote_version_msg: remote_v,
+                            local_version_msg,
+                        })
+                    },
+                    msg => {
+                        warn!("Expect Verack msg but found {:?}", msg);
+                        Err(Error::from(ErrorKind::InvalidPeer))
+                    },
+                }
+            })
     }
 
     /// Send only below message.
     /// - GetBlocks
     /// - GetData
-    pub fn send_msg(mut self, msg: OutgoingMessage) -> Result<Self, Error>
+    pub fn send_msg(self, msg: OutgoingMessage) -> impl Future<Item = Self, Error = Error>
     {
         let (socket, remote_v, local_v) = (self.socket, self.remote_version_msg, self.local_version_msg);
         info!("Send {}", msg);
@@ -79,55 +81,61 @@ impl Connection
             OutgoingMessage::GetHeaders(m) => NetworkMessage::GetHeaders(m),
             OutgoingMessage::GetData(m) => NetworkMessage::GetData(m),
         };
-        let socket = socket.send_msg(msg)?;
-        Ok(Connection {
-            socket,
-            remote_version_msg: remote_v,
-            local_version_msg: local_v,
+        socket.send_msg(msg).map(|socket| {
+            Connection {
+                socket,
+                remote_version_msg: remote_v,
+                local_version_msg: local_v,
+            }
         })
     }
 
     /// Receive only below message.
+    /// - Headers
     /// - Block
     /// - Inv
-    ///
-    /// Wait until above message arrives.
-    pub fn recv_msg(mut self) -> Result<(IncomingMessage, Self), Error>
+    pub fn recv_msg(self) -> impl Future<Item = (IncomingMessage, Self), Error = Error>
     {
-        fn recv_msg_inner(socket: SyncSocket) -> Result<(IncomingMessage, SyncSocket), Error>
-        {
-            let (msg, socket) = socket.recv_msg()?;
-            match msg {
-                NetworkMessage::Ping(nonce) => {
-                    let socket = socket.send_msg(NetworkMessage::Pong(nonce))?;
-                    recv_msg_inner(socket)
-                },
-                NetworkMessage::Headers(h) => Ok((IncomingMessage::Headers(h), socket)),
-                NetworkMessage::Block(b) => Ok((IncomingMessage::Block(b), socket)),
-                NetworkMessage::Inv(i) => Ok((IncomingMessage::Inv(i), socket)),
-                _ => {
-                    info!("Discard incoming message.");
-                    recv_msg_inner(socket)
-                },
-            }
-        }
-
         let (socket, remote_v, local_v) = (self.socket, self.remote_version_msg, self.local_version_msg);
-        let (msg, socket) = recv_msg_inner(socket)?;
 
-        info!("Receive a new message {}", msg);
+        loop_fn(socket, |socket| {
+            socket
+                .recv_msg()
+                .map_err(|e| Err(e)) // Future<Item = _, Error = Result<Error>>
+                .and_then(|(msg, socket)| {
+                    match msg {
+                        NetworkMessage::Ping(nonce) => Err(Ok((nonce, socket))),
+                        NetworkMessage::Headers(h) => Ok(Loop::Break((IncomingMessage::Headers(h), socket))),
+                        NetworkMessage::Block(b) => Ok(Loop::Break((IncomingMessage::Block(b), socket))),
+                        NetworkMessage::Inv(i) => Ok(Loop::Break((IncomingMessage::Inv(i), socket))),
+                        _ => {
+                            info!("Discard incoming message.");
+                            Ok(Loop::Continue(socket))
+                        },
+                    }
+                })
+                .or_else(|e_or_nonce| {
+                    result(e_or_nonce).and_then(|(nonce, socket)| {
+                        socket
+                            .send_msg(NetworkMessage::Pong(nonce))
+                            .map(|socket| Loop::Continue(socket))
+                    })
+                })
+        }).map(|(msg, socket)| {
+            info!("Receive a new message {}", msg);
 
-        let conn = Connection {
-            socket,
-            remote_version_msg: remote_v,
-            local_version_msg: local_v,
-        };
+            let conn = Connection {
+                socket,
+                remote_version_msg: remote_v,
+                local_version_msg: local_v,
+            };
 
-        Ok((msg, conn))
+            (msg, conn)
+        })
     }
 }
 
-fn version_msg(socket: &SyncSocket, start_height: i32) -> VersionMessage
+fn version_msg(socket: &AsyncSocket, start_height: i32) -> VersionMessage
 {
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
     VersionMessage {

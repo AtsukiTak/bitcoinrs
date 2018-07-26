@@ -6,7 +6,7 @@ use bitcoin::util::Error as BitcoinError;
 
 use futures::{Future, Sink, Stream};
 use tokio_codec::{Decoder, Encoder, Framed};
-use tokio::{io::AsyncRead, net::TcpStream as AsyncTcpStream};
+use tokio::{net::TcpStream as AsyncTcpStream};
 use bytes::BytesMut;
 
 use error::Error;
@@ -161,6 +161,27 @@ impl AsyncSocket
             })
     }
 }
+
+impl ::std::fmt::Debug for AsyncSocket
+{
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
+    {
+        write!(
+            f,
+            "AsyncSocket {{ remote: {:?}, local: {:?} }}",
+            self.remote_addr, self.local_addr
+        )
+    }
+}
+
+impl ::std::fmt::Display for AsyncSocket
+{
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
+    {
+        write!(f, "AsyncSocket to peer {:?}", self.remote_addr.address)
+    }
+}
+
 
 struct BitcoinNetworkCodec
 {
