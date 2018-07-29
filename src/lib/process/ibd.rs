@@ -1,208 +1,86 @@
-use bitcoin::network::{message_blockdata::{GetHeadersMessage, InvType, Inventory}, serialize::BitcoinHash};
-use bitcoin::blockdata::block::BlockHeader;
+use bitcoin::network::serialize::BitcoinHash;
+use bitcoin::blockdata::block::{Block, BlockHeader};
 use bitcoin::util::hash::Sha256dHash;
-use futures::future::{loop_fn, Future, Loop};
+use futures::{future::{loop_fn, Future, Loop}, stream::{iter_ok, unfold, Stream}};
+use std::cmp::min;
 
-use connection::{Connection, IncomingMessage, OutgoingMessage};
-use blockchain::{BlockChainMut, BlockData};
+use connection::Connection;
+use super::{getblocks, getheaders, ProcessError};
 
-pub fn initial_block_download(
-    conn: Connection,
-    blockchain: BlockChainMut,
-) -> impl Future<Item = (Connection, BlockChainMut), Error = BlockChainMut>
+pub enum DownloadResult
 {
-    download_headers(conn, blockchain).and_then(|(conn, blockchain)| download_blocks(conn, blockchain))
+    NewBlock(Block),
+    Completed(Connection),
 }
 
-fn download_headers(
+/// Initial block download process.
+/// Returned stream emits `Block`s; which starts at next to `start_block` and ends latest
+/// block. When process is completed, finally `Connection` is returned.
+/// Note that `start_block` must be a stabled one such as genesis block or
+/// enough confirmed block.
+pub fn initial_block_download(
     conn: Connection,
-    blockchain: BlockChainMut,
-) -> impl Future<Item = (Connection, BlockChainMut), Error = BlockChainMut>
+    start_block_hash: Sha256dHash,
+) -> impl Stream<Item = DownloadResult, Error = ProcessError>
+{
+    download_all_headers(conn, start_block_hash) // Future<Item = (Connection, Vec<BlockHeader>)>
+        .and_then(|(conn, headers)| Ok(download_all_blocks(conn, headers))) // Future<Item = Future<Item = Stream>>
+        .into_stream() // Stream<Item = Stream>
+        .flatten()
+}
+
+fn download_all_headers(
+    conn: Connection,
+    start_block_hash: Sha256dHash,
+) -> impl Future<Item = (Connection, Vec<BlockHeader>), Error = ProcessError>
 {
     const MAX_HEADERS_IN_MSG: usize = 2000;
 
-    loop_fn((conn, blockchain), |(conn, blockchain)| {
-        request_getheaders(conn, blockchain)
-            .and_then(|(conn, blockchain)| wait_recv_headers(conn, blockchain))
-            .and_then(|(headers, conn, mut blockchain)| {
-                let n_headers = headers.len();
-                match apply_received_headers(&mut blockchain, headers) {
-                    Ok(()) => {
-                        if n_headers == MAX_HEADERS_IN_MSG {
-                            Ok(Loop::Continue((conn, blockchain)))
-                        } else {
-                            Ok(Loop::Break((conn, blockchain)))
-                        }
-                    },
-                    Err(()) => Err(blockchain),
-                }
-            })
-    })
-}
-
-fn request_getheaders(
-    conn: Connection,
-    blockchain: BlockChainMut,
-) -> impl Future<Item = (Connection, BlockChainMut), Error = BlockChainMut>
-{
-    let locator_hashes = blockchain.locator_blocks().map(|b| b.bitcoin_hash()).collect();
-    let get_headers_msg = GetHeadersMessage::new(locator_hashes, Sha256dHash::default());
-    let msg = OutgoingMessage::GetHeaders(get_headers_msg);
-    conn.send_msg(msg).then(move |res| {
-        match res {
-            Ok(conn) => {
-                info!("Sent getheaders message");
-                Ok((conn, blockchain))
-            },
-            Err(e) => {
-                info!("Error while sending getheaders message : {:?}", e);
-                Err(blockchain)
-            },
-        }
-    })
-}
-
-fn wait_recv_headers(
-    conn: Connection,
-    blockchain: BlockChainMut,
-) -> impl Future<Item = (Vec<BlockHeader>, Connection, BlockChainMut), Error = BlockChainMut>
-{
-    conn.recv_msg().then(move |res| {
-        match res {
-            Ok((IncomingMessage::Headers(hs), conn)) => {
-                info!("Receive headers message");
-                let headers = hs.iter().map(|lone| lone.header).collect();
-                Ok((headers, conn, blockchain))
-            },
-            Ok((msg, conn)) => {
-                info!("Receive unexpected message. Expected headers msg but receive {}", msg);
-                info!("Drop connection : {:?}", conn);
-                Err(blockchain)
-            },
-            Err(e) => {
-                info!("Error while receiving headers message : {:?}", e);
-                Err(blockchain)
-            },
-        }
-    })
-}
-
-fn apply_received_headers(blockchain: &mut BlockChainMut, mut headers: Vec<BlockHeader>) -> Result<(), ()>
-{
-    for header in headers.drain(..) {
-        if let Err(e) = blockchain.try_add_header(header) {
-            info!("Receive invalid block header. {:?}", e);
-            return Err(());
-        }
-    }
-    info!(
-        "Applied new headers to internal blockchain. Current length is {}",
-        blockchain.len()
-    );
-    Ok(())
-}
-
-fn download_blocks(
-    conn: Connection,
-    blockchain: BlockChainMut,
-) -> impl Future<Item = (Connection, BlockChainMut), Error = BlockChainMut>
-{
-    loop_fn((conn, blockchain), |(conn, blockchain)| {
-        request_getblocks(conn, blockchain).and_then(|(n_req_blocks, conn, blockchain)| {
-            wait_recv_blocks_and_apply(conn, blockchain, n_req_blocks).map(move |(conn, blockchain)| {
-                if n_req_blocks == 16 {
-                    Loop::Continue((conn, blockchain))
-                } else {
-                    Loop::Break((conn, blockchain))
-                }
-            })
-        })
-    })
-}
-
-fn request_getblocks(
-    conn: Connection,
-    blockchain: BlockChainMut,
-) -> impl Future<Item = (usize, Connection, BlockChainMut), Error = BlockChainMut>
-{
-    const DL_AT_ONCE_MAX: usize = 16;
-    let invs: Vec<_> = blockchain
-            .iter()
-            .rev() // Make it easy to find header_only block
-            .filter(|block| block.is_header_only())
-            .take(DL_AT_ONCE_MAX)
-            .map(|block| {
-                Inventory {
-                    inv_type: InvType::Block,
-                    hash: block.bitcoin_hash(),
-                }
-            })
-            .collect();
-    let n_invs = invs.len();
-    let msg = OutgoingMessage::GetData(invs);
-    conn.send_msg(msg).then(move |res| {
-        match res {
-            Ok(conn) => {
-                info!("Sent getblocks message");
-                Ok((n_invs, conn, blockchain))
-            },
-            Err(e) => {
-                info!("Error while sending getblocks message : {:?}", e);
-                Err(blockchain)
-            },
-        }
-    })
-}
-
-fn wait_recv_blocks_and_apply(
-    conn: Connection,
-    blockchain: BlockChainMut,
-    n_req_blocks: usize,
-) -> impl Future<Item = (Connection, BlockChainMut), Error = BlockChainMut>
-{
     loop_fn(
-        (conn, blockchain, n_req_blocks),
-        |(conn, mut blockchain, n_req_blocks)| {
-            conn.recv_msg().then(move |res| {
-                match res {
-                    // Receive "block" message
-                    Ok((IncomingMessage::Block(block), conn)) => {
-                        info!("Receive a new block");
+        (conn, start_block_hash, Vec::<BlockHeader>::new()),
+        |(conn, start_block_hash, mut headers_buf)| {
+            getheaders(conn, start_block_hash).and_then(|(conn, mut headers)| {
+                let is_completed = headers.len() == MAX_HEADERS_IN_MSG;
+                headers_buf.append(&mut headers);
 
-                        // Search internal blockchain
-                        let is_found = {
-                            match blockchain.get_block_mut(block.bitcoin_hash()) {
-                                Some(b) => {
-                                    // Replace old block (it might be header only) with a new one.
-                                    *b = BlockData::new_full_block(block);
-                                    true
-                                },
-                                None => false,
-                            }
-                        };
-                        if is_found {
-                            if n_req_blocks == 1 {
-                                Ok(Loop::Break((conn, blockchain)))
-                            } else {
-                                Ok(Loop::Continue((conn, blockchain, n_req_blocks - 1)))
-                            }
-                        } else {
-                            info!("Receive unexpected block : Hash does not match.");
-                            return Err(blockchain);
-                        }
-                    },
-
-                    Ok((msg, conn)) => {
-                        info!("Receive unexpected message. Expected block msg but receive {}", msg);
-                        info!("Drop connection {:?}", conn);
-                        Err(blockchain)
-                    },
-                    Err(e) => {
-                        info!("Error while receiving block message : {:?}", e);
-                        Err(blockchain)
-                    },
+                if is_completed {
+                    Ok(Loop::Break((conn, headers_buf)))
+                } else {
+                    let last_hash = headers_buf.last().unwrap().bitcoin_hash();
+                    Ok(Loop::Continue((conn, last_hash, headers_buf)))
                 }
             })
         },
     )
+}
+
+fn download_all_blocks(
+    conn: Connection,
+    all_headers: Vec<BlockHeader>,
+) -> impl Stream<Item = DownloadResult, Error = ProcessError>
+{
+    const NUM_BLOCKS_REQ_AT_ONCE: usize = 16;
+
+    unfold(Some((conn, all_headers)), |maybe_items| {
+        match maybe_items {
+            None => None,
+            Some((conn, mut headers)) => {
+                let n_req_blocks = min(headers.len(), NUM_BLOCKS_REQ_AT_ONCE);
+                let remain_headers = headers.split_off(n_req_blocks);
+                let hashes = headers.iter().map(|h| h.bitcoin_hash()).collect();
+                let download_fut = getblocks(conn, hashes) // Future<Item = (Vec<Block>, Connection)>
+                    .map(move |(conn, mut blocks)| {
+                        let mut download_results: Vec<_> = blocks.drain(..).map(|b| DownloadResult::NewBlock(b)).collect();
+                        if remain_headers.is_empty() {
+                            download_results.push(DownloadResult::Completed(conn));
+                            (iter_ok(download_results), None)
+                        } else {
+                            (iter_ok(download_results), Some((conn, remain_headers)))
+                        }
+                    }); // Future<Item = (Stream<DownloadResult>, (Connection, Vec<BlockHeader>)>
+                Some(download_fut)
+            },
+        }
+    }) // Stream<Item = Stream<Item = DownloadResult>>
+    .flatten() // Stream<Item = DownloadResult>
 }
