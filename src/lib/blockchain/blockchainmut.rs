@@ -473,9 +473,9 @@ impl<'a> DoubleEndedIterator for BlockTreeIter<'a>
 mod tests
 {
     use super::*;
-    use bitcoin::blockdata::block::BlockHeader;
+    use bitcoin::blockdata::block::{Block, BlockHeader};
 
-    fn dummy_block(prev_hash: Sha256dHash) -> Block
+    fn dummy_block_header(prev_hash: Sha256dHash) -> BlockHeader
     {
         let header = BlockHeader {
             version: 1,
@@ -485,63 +485,63 @@ mod tests
             bits: 0,
             nonce: 0,
         };
-        Block {
-            header,
-            txdata: Vec::new(),
-        }
+        header
     }
 
     #[test]
     fn blockchainmut_try_add()
     {
-        let start_block = dummy_block(Sha256dHash::default());
-        let next_block = dummy_block(start_block.bitcoin_hash());
-        let mut blockchain = BlockChainMut::with_start(start_block.clone());
+        let start_block_header = dummy_block_header(Sha256dHash::default());
+        let next_block_header = dummy_block_header(start_block_header.bitcoin_hash());
+        let mut blockchain = BlockChainMut::with_start(BlockData::new(start_block_header.clone()));
 
-        blockchain.try_add(next_block.clone()).unwrap(); // Should success.
+        blockchain.try_add(BlockData::new(next_block_header.clone())).unwrap(); // Should success.
 
         assert_eq!(blockchain.len(), 2);
 
-        let blocks: Vec<_> = blockchain.iter().map(|d| d.block().clone()).collect();
-        assert_eq!(blocks, vec![start_block, next_block]);
+        let headers: Vec<_> = blockchain.iter().map(|b| b.header().clone()).collect();
+        assert_eq!(headers, vec![start_block_header, next_block_header]);
     }
 
     #[test]
     fn blocktree_try_add()
     {
-        let start_block = dummy_block(Sha256dHash::default());
-        let next_block = dummy_block(start_block.bitcoin_hash());
-        let mut blocktree = BlockTree::with_start(BlockData::new(start_block.clone()));
+        let start_block_header = dummy_block_header(Sha256dHash::default());
+        let next_block_header = dummy_block_header(start_block_header.bitcoin_hash());
+        let mut blocktree = BlockTree::with_start(BlockData::new(start_block_header.clone()));
 
-        blocktree.try_add(BlockData::new(next_block.clone())).unwrap(); // Should success.
+        blocktree.try_add(BlockData::new(next_block_header.clone())).unwrap(); // Should success.
 
         assert_eq!(blocktree.len(), 2);
 
-        let blocks: Vec<_> = blocktree.iter().map(|d| d.block().clone()).collect();
-        assert_eq!(blocks, vec![start_block, next_block]);
+        let headers: Vec<_> = blocktree
+            .iter()
+            .map(|node| unsafe { (*node).block.header().clone() })
+            .collect();
+        assert_eq!(headers, vec![start_block_header, next_block_header]);
     }
 
     #[test]
     fn add_8_blocks_to_blockchainmut()
     {
-        let block1 = dummy_block(Sha256dHash::default());
-        let block2 = dummy_block(block1.bitcoin_hash());
-        let block3 = dummy_block(block2.bitcoin_hash());
-        let block4 = dummy_block(block3.bitcoin_hash());
-        let block5 = dummy_block(block4.bitcoin_hash());
-        let block6 = dummy_block(block5.bitcoin_hash());
-        let block7 = dummy_block(block6.bitcoin_hash());
-        let block8 = dummy_block(block7.bitcoin_hash());
+        let block1 = dummy_block_header(Sha256dHash::default());
+        let block2 = dummy_block_header(block1.bitcoin_hash());
+        let block3 = dummy_block_header(block2.bitcoin_hash());
+        let block4 = dummy_block_header(block3.bitcoin_hash());
+        let block5 = dummy_block_header(block4.bitcoin_hash());
+        let block6 = dummy_block_header(block5.bitcoin_hash());
+        let block7 = dummy_block_header(block6.bitcoin_hash());
+        let block8 = dummy_block_header(block7.bitcoin_hash());
 
-        let mut blockchain = BlockChainMut::with_start(block1);
+        let mut blockchain = BlockChainMut::with_start(BlockData::new(block1));
 
-        blockchain.try_add(block2).unwrap();
-        blockchain.try_add(block3).unwrap();
-        blockchain.try_add(block4).unwrap();
-        blockchain.try_add(block5).unwrap();
-        blockchain.try_add(block6).unwrap();
-        blockchain.try_add(block7).unwrap();
-        blockchain.try_add(block8).unwrap();
+        blockchain.try_add(BlockData::new(block2)).unwrap();
+        blockchain.try_add(BlockData::new(block3)).unwrap();
+        blockchain.try_add(BlockData::new(block4)).unwrap();
+        blockchain.try_add(BlockData::new(block5)).unwrap();
+        blockchain.try_add(BlockData::new(block6)).unwrap();
+        blockchain.try_add(BlockData::new(block7)).unwrap();
+        blockchain.try_add(BlockData::new(block8)).unwrap();
 
         assert_eq!(blockchain.stable_chain.len(), 1);
         assert_eq!(blockchain.unstable_chain.len(), 7);
