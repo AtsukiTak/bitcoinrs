@@ -1,4 +1,4 @@
-use bitcoin::blockdata::{block::{Block, BlockHeader}, constants::genesis_block};
+use bitcoin::blockdata::constants::genesis_block;
 use bitcoin::network::{constants::Network, serialize::BitcoinHash};
 use bitcoin::util::hash::Sha256dHash;
 use std::{marker::PhantomData, sync::Arc};
@@ -24,7 +24,7 @@ impl BlockChainMut
     /// please use `with_start` function.
     pub fn new() -> BlockChainMut
     {
-        BlockChainMut::with_start(BlockData::new_full_block(genesis_block(Network::Bitcoin)))
+        BlockChainMut::with_start(BlockData::new(genesis_block(Network::Bitcoin).header))
     }
 
     /// Creaet a new `BlockChainMut` struct with start block.
@@ -54,16 +54,6 @@ impl BlockChainMut
             self.stable_chain.add_block(stabled);
         }
         Ok(stored_block)
-    }
-
-    pub fn try_add_header(&mut self, header: BlockHeader) -> Result<&BlockData, InvalidBlock>
-    {
-        self.try_add(BlockData::new_header_only(header))
-    }
-
-    pub fn try_add_block(&mut self, block: Block) -> Result<&BlockData, InvalidBlock>
-    {
-        self.try_add(BlockData::new_full_block(block))
     }
 
     /// Get iterator representing current best block chain.
