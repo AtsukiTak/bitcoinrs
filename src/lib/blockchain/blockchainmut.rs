@@ -5,7 +5,7 @@ use std::{marker::PhantomData, sync::Arc};
 
 use super::{BlockChain, BlockData};
 
-const ENOUGH_CONFIRMATION: usize = 6;
+const ENOUGH_CONFIRMATION: usize = 12;
 
 /// A simple implementation of blockchain.
 pub struct BlockChainMut
