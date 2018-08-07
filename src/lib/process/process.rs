@@ -18,22 +18,15 @@ pub enum ProcessError
 
 pub fn getheaders(
     conn: Connection,
-    start_block_hash: Sha256dHash,
+    locator_hashes: Vec<Sha256dHash>,
 ) -> impl Future<Item = (Connection, Vec<BlockHeader>), Error = ProcessError>
 {
-    request_getheaders(conn, vec![start_block_hash.clone()])
+    request_getheaders(conn, locator_hashes)
         .and_then(wait_recv_headers)
         .and_then(move |(conn, headers)| {
-            match headers.first() {
-                None => {
-                    info!("Peer {} sends empty headers message", conn);
-                    return Err(ProcessError::Misbehavior(conn));
-                },
-                Some(header) if header.prev_blockhash != start_block_hash => {
-                    info!("Peer {} could not find given start_block_hash", conn);
-                    return Err(ProcessError::InvalidStartHash(start_block_hash));
-                },
-                _ => {}, // Check is passed
+            if headers.is_empty() {
+                info!("Peer {} sends empty headers message", conn);
+                return Err(ProcessError::Misbehavior(conn));
             }
             Ok((conn, headers))
         })
