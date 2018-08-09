@@ -68,7 +68,7 @@ fn download_all_blocks<B: StoredBlock>(
                 for block in blocks.drain(..) {
                     let stored_block = B::new(block);
                     match block_chain.try_add(stored_block) {
-                        Ok(_) => {},
+                        Ok(_) => info!("Added a new block"),
                         Err(_e) => {
                             warn!("Peer {} sends us an invalid block", conn);
                             return Err(Error::from(ErrorKind::MisbehaviorPeer(conn)));
