@@ -1,5 +1,6 @@
 use bitcoin::blockdata::block::{Block, BlockHeader};
 use bitcoin::network::serialize::BitcoinHash;
+use bitcoin::util::hash::Sha256dHash;
 
 pub trait StoredBlock: BitcoinHash + Clone
 {
@@ -8,35 +9,38 @@ pub trait StoredBlock: BitcoinHash + Clone
     fn header(&self) -> &BlockHeader;
 }
 
-/*
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BlockData
+pub trait StoredFullBlock: StoredBlock
 {
-    header: Arc<BlockHeader>,
-    hash: Sha256dHash, // Just for cache.
+    fn block(&self) -> &Block;
 }
 
-impl BlockData
+#[derive(Clone, Debug)]
+pub struct HeaderOnlyBlock
 {
-    pub fn new(header: BlockHeader) -> BlockData
-    {
-        BlockData {
-            hash: header.bitcoin_hash(),
-            header: Arc::new(header),
-        }
-    }
-
-    pub fn header(&self) -> &BlockHeader
-    {
-        &self.header
-    }
+    header: BlockHeader,
+    hash: Sha256dHash,
 }
 
-impl BitcoinHash for BlockData
+impl BitcoinHash for HeaderOnlyBlock
 {
     fn bitcoin_hash(&self) -> Sha256dHash
     {
         self.hash
     }
 }
-*/
+
+impl StoredBlock for HeaderOnlyBlock
+{
+    fn new(block: Block) -> Self
+    {
+        HeaderOnlyBlock {
+            hash: block.bitcoin_hash(),
+            header: block.header,
+        }
+    }
+
+    fn header(&self) -> &BlockHeader
+    {
+        &self.header
+    }
+}
