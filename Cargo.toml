@@ -1,5 +1,5 @@
 [package]
-name = "bitcoin_observer"
+name = "yabitcoin"
 version = "0.0.0"
 authors = ["AtsukiTak <takatomgoo@gmail.com>"]
 
