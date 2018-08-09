@@ -15,10 +15,6 @@ log = "0.4"
 env_logger = "0.5"
 error-chain = "0.12"
 
-[[bin]]
-name = "bitcoin_observer"
-path = "src/bin/main.rs"
-
 [lib]
-name = "libbitcoin_observer"
+name = "libyabitcoin"
 path = "src/lib/lib.rs"
