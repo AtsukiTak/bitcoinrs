@@ -46,7 +46,7 @@ impl Connection
                     NetworkMessage::Version(v) => Ok((v, socket)),
                     msg => {
                         warn!("Expect Version msg but found {:?}", msg);
-                        Err(Error::from(ErrorKind::InvalidPeer))
+                        Err(Error::from(ErrorKind::HandshakeError(socket)))
                     },
                 }
             })
@@ -64,7 +64,7 @@ impl Connection
                     },
                     msg => {
                         warn!("Expect Verack msg but found {:?}", msg);
-                        Err(Error::from(ErrorKind::InvalidPeer))
+                        Err(Error::from(ErrorKind::HandshakeError(socket)))
                     },
                 }
             })

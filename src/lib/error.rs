@@ -9,9 +9,13 @@ error_chain! {
     }
 
     errors {
-        InvalidPeer {
-            description("Invalid peer")
-            display("Invalid peer")
+        HandshakeError(socket: ::socket::AsyncSocket) {
+            description("Error while handshaking")
+            display("Error while handshaking on {:?}", socket)
+        }
+        MisbehaviorPeer(conn: ::connection::Connection) {
+            description("Misbehavior peer")
+            display("Peer {} does misbehavior", conn)
         }
     }
 }

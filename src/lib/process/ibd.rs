@@ -5,8 +5,10 @@ use std::cmp::min;
 
 use connection::Connection;
 use blockchain::{BlockChainMut, BlockData};
-use super::{getblocks, getheaders, ProcessError};
+use error::{Error, ErrorKind};
+use super::{getblocks, getheaders};
 
+#[derive(Debug)]
 pub enum DownloadResult
 {
     NewBlock(Block),
@@ -21,7 +23,7 @@ pub enum DownloadResult
 pub fn initial_block_download(
     conn: Connection,
     block_chain: BlockChainMut,
-) -> impl Stream<Item = DownloadResult, Error = ProcessError>
+) -> impl Stream<Item = DownloadResult, Error = Error>
 {
     download_all_headers(conn, block_chain) // Future<Item = (Connection, BlockChainMut, Vec<BlockHeader>)>
         .and_then(|(conn, block_chain, headers)| Ok(download_all_blocks(conn, headers, block_chain)))
@@ -32,7 +34,7 @@ pub fn initial_block_download(
 fn download_all_headers(
     conn: Connection,
     block_chain: BlockChainMut,
-) -> impl Future<Item = (Connection, BlockChainMut, Vec<BlockHeader>), Error = ProcessError>
+) -> impl Future<Item = (Connection, BlockChainMut, Vec<BlockHeader>), Error = Error>
 {
     const MAX_HEADERS_IN_MSG: usize = 2000;
 
@@ -53,7 +55,7 @@ fn download_all_headers(
                                 "Peer {} sends an invalid header. We can't apply it into internal blockchain.",
                                 conn
                             );
-                            return Err(ProcessError::Misbehavior(conn));
+                            return Err(Error::from(ErrorKind::MisbehaviorPeer(conn)));
                         },
                     }
                 }
@@ -73,7 +75,7 @@ fn download_all_blocks(
     conn: Connection,
     new_headers: Vec<BlockHeader>,
     block_chain: BlockChainMut,
-) -> impl Stream<Item = DownloadResult, Error = ProcessError>
+) -> impl Stream<Item = DownloadResult, Error = Error>
 {
     const NUM_BLOCKS_REQ_AT_ONCE: usize = 16;
 

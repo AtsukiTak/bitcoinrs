@@ -4,13 +4,7 @@ use bitcoin::util::hash::Sha256dHash;
 use futures::future::{loop_fn, Future, Loop};
 
 use connection::{Connection, IncomingMessage, OutgoingMessage};
-
-pub enum ProcessError
-{
-    ConnectionError,
-    Misbehavior(Connection),
-    InvalidStartHash(Sha256dHash),
-}
+use error::{Error, ErrorKind};
 
 /*
  * High level functions
@@ -19,14 +13,14 @@ pub enum ProcessError
 pub fn getheaders(
     conn: Connection,
     locator_hashes: Vec<Sha256dHash>,
-) -> impl Future<Item = (Connection, Vec<BlockHeader>), Error = ProcessError>
+) -> impl Future<Item = (Connection, Vec<BlockHeader>), Error = Error>
 {
     request_getheaders(conn, locator_hashes)
         .and_then(wait_recv_headers)
         .and_then(move |(conn, headers)| {
             if headers.is_empty() {
                 info!("Peer {} sends empty headers message", conn);
-                return Err(ProcessError::Misbehavior(conn));
+                return Err(Error::from(ErrorKind::MisbehaviorPeer(conn)));
             }
             Ok((conn, headers))
         })
@@ -35,7 +29,7 @@ pub fn getheaders(
 pub fn getblocks(
     conn: Connection,
     block_hashes: Vec<Sha256dHash>,
-) -> impl Future<Item = (Connection, Vec<Block>), Error = ProcessError>
+) -> impl Future<Item = (Connection, Vec<Block>), Error = Error>
 {
     let n_req_blocks = block_hashes.len();
     request_getblocks(conn, block_hashes.clone())
@@ -46,7 +40,7 @@ pub fn getblocks(
                 .zip(block_hashes.iter())
                 .all(|(block, hash)| block.bitcoin_hash() == *hash);
             if !is_expected_blocks {
-                Err(ProcessError::Misbehavior(conn))
+                Err(Error::from(ErrorKind::MisbehaviorPeer(conn)))
             } else {
                 Ok((conn, blocks))
             }
@@ -60,40 +54,25 @@ pub fn getblocks(
 pub fn request_getheaders(
     conn: Connection,
     locator_hashes: Vec<Sha256dHash>,
-) -> impl Future<Item = Connection, Error = ProcessError>
+) -> impl Future<Item = Connection, Error = Error>
 {
     let get_headers_msg = GetHeadersMessage::new(locator_hashes, Sha256dHash::default());
     let msg = OutgoingMessage::GetHeaders(get_headers_msg);
-    conn.send_msg(msg).then(move |res| {
-        match res {
-            Ok(conn) => {
-                info!("Sent getheaders message");
-                Ok(conn)
-            },
-            Err(e) => {
-                info!("Error while sending getheaders message : {:?}", e);
-                Err(ProcessError::ConnectionError)
-            },
-        }
-    })
+    conn.send_msg(msg)
 }
 
-pub fn wait_recv_headers(conn: Connection) -> impl Future<Item = (Connection, Vec<BlockHeader>), Error = ProcessError>
+pub fn wait_recv_headers(conn: Connection) -> impl Future<Item = (Connection, Vec<BlockHeader>), Error = Error>
 {
     conn.recv_msg().then(move |res| {
-        match res {
-            Ok((IncomingMessage::Headers(hs), conn)) => {
+        match res? {
+            (IncomingMessage::Headers(hs), conn) => {
                 info!("Receive headers message");
                 let headers = hs.iter().map(|lone| lone.header).collect();
                 Ok((conn, headers))
             },
-            Ok((msg, conn)) => {
+            (msg, conn) => {
                 info!("Receive unexpected message. Expected headers msg but receive {}", msg);
-                Err(ProcessError::Misbehavior(conn))
-            },
-            Err(e) => {
-                info!("Error while receiving headers message : {:?}", e);
-                Err(ProcessError::ConnectionError)
+                Err(Error::from(ErrorKind::MisbehaviorPeer(conn)))
             },
         }
     })
@@ -103,7 +82,7 @@ pub fn wait_recv_headers(conn: Connection) -> impl Future<Item = (Connection, Ve
 pub fn request_getblocks(
     conn: Connection,
     block_hashes: Vec<Sha256dHash>,
-) -> impl Future<Item = Connection, Error = ProcessError>
+) -> impl Future<Item = Connection, Error = Error>
 {
     let invs: Vec<_> = block_hashes
         .iter()
@@ -115,23 +94,20 @@ pub fn request_getblocks(
         })
         .collect();
     let msg = OutgoingMessage::GetData(invs);
-    conn.send_msg(msg).map_err(|e| {
-        info!("Error while sending getblocks message : {:?}", e);
-        ProcessError::ConnectionError
-    })
+    conn.send_msg(msg)
 }
 
 
 pub fn wait_recv_blocks(
     conn: Connection,
     n_req_blocks: usize,
-) -> impl Future<Item = (Connection, Vec<Block>), Error = ProcessError>
+) -> impl Future<Item = (Connection, Vec<Block>), Error = Error>
 {
     loop_fn((conn, vec![], n_req_blocks), |(conn, mut blocks_buf, n_req_blocks)| {
         conn.recv_msg().then(move |res| {
-            match res {
+            match res? {
                 // Receive "block" message
-                Ok((IncomingMessage::Block(block), conn)) => {
+                (IncomingMessage::Block(block), conn) => {
                     info!("Receive a new block");
                     blocks_buf.push(block);
                     let n_rmn_blocks = n_req_blocks - 1;
@@ -143,14 +119,10 @@ pub fn wait_recv_blocks(
                     }
                 },
                 // Errors
-                Ok((msg, conn)) => {
+                (msg, conn) => {
                     info!("Receive unexpected message. Expected block msg but receive {}", msg);
                     info!("Drop connection {:?}", conn);
-                    Err(ProcessError::Misbehavior(conn))
-                },
-                Err(e) => {
-                    info!("Error while receiving block message : {:?}", e);
-                    Err(ProcessError::ConnectionError)
+                    Err(Error::from(ErrorKind::MisbehaviorPeer(conn)))
                 },
             }
         })

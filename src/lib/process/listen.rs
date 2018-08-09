@@ -4,12 +4,13 @@ use futures::{Future, stream::{unfold, Stream}};
 
 use connection::{Connection, IncomingMessage};
 use blockchain::{BlockChain, BlockChainMut, BlockData};
-use super::{getblocks, getheaders, ProcessError};
+use error::{Error, ErrorKind};
+use super::{getblocks, getheaders};
 
 pub fn listen_new_block(
     conn: Connection,
     block_chain: BlockChainMut,
-) -> impl Stream<Item = (BlockChain, Vec<Block>), Error = ProcessError>
+) -> impl Stream<Item = (BlockChain, Vec<Block>), Error = Error>
 {
     unfold((conn, block_chain), |(conn, block_chain)| {
         let f = listen_single_process(conn, block_chain).map(|(conn, block_chain, blocks)| {
@@ -23,14 +24,10 @@ pub fn listen_new_block(
 fn listen_single_process(
     conn: Connection,
     mut block_chain: BlockChainMut,
-) -> impl Future<Item = (Connection, BlockChainMut, Vec<Block>), Error = ProcessError>
+) -> impl Future<Item = (Connection, BlockChainMut, Vec<Block>), Error = Error>
 {
     let locator_hashes = block_chain.locator_blocks().map(|b| b.bitcoin_hash()).collect();
     conn.recv_msg()
-        .map_err(|e| {
-            error!("{:?}", e);
-            ProcessError::ConnectionError
-        })
         .and_then(|(msg, conn)| {
             match msg {
                 // If we use "standard block relay", peer sends "inv" message first.
@@ -43,12 +40,12 @@ fn listen_single_process(
                 // we received headers message first.
                 IncomingMessage::Headers(_) => {
                     warn!("Expect inv message but receive headers message.");
-                    Err(ProcessError::Misbehavior(conn))
+                    Err(Error::from(ErrorKind::MisbehaviorPeer(conn)))
                 },
 
                 IncomingMessage::Block(_) => {
                     warn!("Expect inv message but receive block message.");
-                    Err(ProcessError::Misbehavior(conn))
+                    Err(Error::from(ErrorKind::MisbehaviorPeer(conn)))
                 },
             }
         })
@@ -63,7 +60,7 @@ fn listen_single_process(
                     Ok(_) => {},
                     Err(_e) => {
                         warn!("Peer {} sends invalid header", conn);
-                        return Err(ProcessError::Misbehavior(conn));
+                        return Err(Error::from(ErrorKind::MisbehaviorPeer(conn)));
                     },
                 }
             }
