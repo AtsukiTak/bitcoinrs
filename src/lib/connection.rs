@@ -108,8 +108,9 @@ impl Connection
                         NetworkMessage::Headers(h) => Ok(Loop::Break((IncomingMessage::Headers(h), socket))),
                         NetworkMessage::Block(b) => Ok(Loop::Break((IncomingMessage::Block(b), socket))),
                         NetworkMessage::Inv(i) => Ok(Loop::Break((IncomingMessage::Inv(i), socket))),
-                        _ => {
+                        m => {
                             info!("Discard incoming message.");
+                            debug!("Message : {:?}", m);
                             Ok(Loop::Continue(socket))
                         },
                     }
