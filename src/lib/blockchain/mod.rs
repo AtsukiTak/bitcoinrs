@@ -4,4 +4,4 @@ mod block;
 
 pub use self::blockchainmut::BlockChainMut;
 pub use self::blockchain::BlockChain;
-pub use self::block::BlockData;
+pub use self::block::StoredBlock;

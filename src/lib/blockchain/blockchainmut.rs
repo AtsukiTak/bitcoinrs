@@ -1,35 +1,35 @@
 use bitcoin::blockdata::constants::genesis_block;
-use bitcoin::network::{constants::Network, serialize::BitcoinHash};
+use bitcoin::network::constants::Network;
 use bitcoin::util::hash::Sha256dHash;
 use std::{marker::PhantomData, sync::Arc};
 
-use super::{BlockChain, BlockData};
+use super::{BlockChain, StoredBlock};
 
 const ENOUGH_CONFIRMATION: usize = 12;
 
 /// A simple implementation of blockchain.
-pub struct BlockChainMut
+pub struct BlockChainMut<B>
 {
-    stable_chain: StableBlockChain,
-    unstable_chain: UnstableBlockChain,
+    stable_chain: StableBlockChain<B>,
+    unstable_chain: UnstableBlockChain<B>,
 }
 
 #[derive(Debug)]
 pub struct InvalidBlock;
 
-impl BlockChainMut
+impl<B: StoredBlock> BlockChainMut<B>
 {
     /// Create a new `BlockChainMut` struct with main net genesis block.
     /// If you want another network (such as test network) genesis block,
     /// please use `with_start` function.
-    pub fn new() -> BlockChainMut
+    pub fn new() -> BlockChainMut<B>
     {
-        BlockChainMut::with_start(BlockData::new(genesis_block(Network::Bitcoin).header))
+        BlockChainMut::with_start(B::new(genesis_block(Network::Bitcoin)))
     }
 
     /// Creaet a new `BlockChainMut` struct with start block.
     /// Note that given start block **MUST** be stable one.
-    pub fn with_start(block: BlockData) -> BlockChainMut
+    pub fn with_start(block: B) -> BlockChainMut<B>
     {
         BlockChainMut {
             stable_chain: StableBlockChain::new(),
@@ -45,7 +45,7 @@ impl BlockChainMut
 
     /// Try to add a new block.
     /// If success, reference to given block is returned.
-    pub fn try_add(&mut self, block: BlockData) -> Result<&BlockData, InvalidBlock>
+    pub fn try_add(&mut self, block: B) -> Result<&B, InvalidBlock>
     {
         // TODO : Check PoW of given block
 
@@ -58,14 +58,14 @@ impl BlockChainMut
 
     /// Get iterator representing current best block chain.
     /// Oldest block comes first, latest block comes last.
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a BlockData> + DoubleEndedIterator
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a B> + DoubleEndedIterator
     {
         let unstable_blocks = self.unstable_chain.iter();
         let stable_blocks = self.stable_chain.blocks.iter();
         stable_blocks.chain(unstable_blocks)
     }
 
-    pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut BlockData> + DoubleEndedIterator
+    pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut B> + DoubleEndedIterator
     {
         let unstable_blocks = self.unstable_chain.iter_mut();
         let stable_blocks = self.stable_chain.blocks.iter_mut();
@@ -77,13 +77,13 @@ impl BlockChainMut
     ///
     /// # Note
     /// Is there better way to create `Vec`?
-    pub fn to_vec(&self) -> Vec<&BlockData>
+    pub fn to_vec(&self) -> Vec<&B>
     {
         self.iter().collect()
     }
 
     /// Get immutable `BlockChain`.
-    pub fn freeze(&self) -> BlockChain
+    pub fn freeze(&self) -> BlockChain<B>
     {
         BlockChain {
             blocks: Arc::new(self.iter().cloned().collect()),
@@ -94,18 +94,18 @@ impl BlockChainMut
     ///
     /// The key of this function is `unwrap`; since there are always start block at least,
     /// we can call `unwrap`.
-    pub fn latest_block(&self) -> &BlockData
+    pub fn latest_block(&self) -> &B
     {
         self.iter().rev().next().unwrap() // since there are always start block
     }
 
     /// Get block whose hash is exactly same with given hash.
-    pub fn get_block(&self, hash: Sha256dHash) -> Option<&BlockData>
+    pub fn get_block(&self, hash: Sha256dHash) -> Option<&B>
     {
         self.iter().find(move |b| b.bitcoin_hash() == hash)
     }
 
-    pub fn get_block_mut(&mut self, hash: Sha256dHash) -> Option<&mut BlockData>
+    pub fn get_block_mut(&mut self, hash: Sha256dHash) -> Option<&mut B>
     {
         self.iter_mut().find(move |b| b.bitcoin_hash() == hash)
     }
@@ -117,21 +117,29 @@ impl BlockChainMut
     /// It should be improved in future.
     /// Bitcoin core's implementation is here.
     /// https://github.com/bitcoin/bitcoin/blob/master/src/chain.cpp#L23
-    pub fn locator_blocks<'a>(&'a self) -> impl Iterator<Item = &'a BlockData>
+    pub fn locator_blocks<'a>(&'a self) -> impl Iterator<Item = &'a B>
     {
         self.iter().rev().take(10)
     }
 }
 
-/// Chain of blocks which is confirmed enough.
-struct StableBlockChain
+impl<B> ::std::fmt::Debug for BlockChainMut<B>
 {
-    blocks: Vec<BlockData>,
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
+    {
+        write!(f, "BlockChainMut{{ .. }}")
+    }
 }
 
-impl StableBlockChain
+/// Chain of blocks which is confirmed enough.
+struct StableBlockChain<B>
 {
-    fn new() -> StableBlockChain
+    blocks: Vec<B>,
+}
+
+impl<B: StoredBlock> StableBlockChain<B>
+{
+    fn new() -> StableBlockChain<B>
     {
         StableBlockChain { blocks: Vec::new() }
     }
@@ -141,24 +149,24 @@ impl StableBlockChain
         self.blocks.len()
     }
 
-    fn add_block(&mut self, stabled: StabledBlock)
+    fn add_block(&mut self, stabled: StabledBlock<B>)
     {
         self.blocks.push(stabled.0);
     }
 }
 
 /// Just make sure that given Block is returned by `UnstableBlockChain::try_add_block`.
-struct StabledBlock(BlockData);
+struct StabledBlock<B>(B);
 
 /// Chain of blocks which is **NOT** confirmed enough.
-struct UnstableBlockChain
+struct UnstableBlockChain<B>
 {
-    tree: BlockTree,
+    tree: BlockTree<B>,
 }
 
-impl UnstableBlockChain
+impl<B: StoredBlock> UnstableBlockChain<B>
 {
-    fn with_start(block: BlockData) -> UnstableBlockChain
+    fn with_start(block: B) -> UnstableBlockChain<B>
     {
         UnstableBlockChain {
             tree: BlockTree::with_start(block),
@@ -170,19 +178,19 @@ impl UnstableBlockChain
         self.tree.len()
     }
 
-    fn try_add(&mut self, block: BlockData) -> Result<(&BlockData, Option<StabledBlock>), InvalidBlock>
+    fn try_add(&mut self, block: B) -> Result<(&B, Option<StabledBlock<B>>), InvalidBlock>
     {
         self.tree.try_add(block)
     }
 
-    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a BlockData> + DoubleEndedIterator
+    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a B> + DoubleEndedIterator
     {
         self.tree
             .iter()
             .map(|node_ptr| unsafe { &node_ptr.as_ref().unwrap().block })
     }
 
-    fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut BlockData> + DoubleEndedIterator
+    fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut B> + DoubleEndedIterator
     {
         self.tree
             .iter()
@@ -190,37 +198,33 @@ impl UnstableBlockChain
     }
 }
 
-struct BlockTree
+struct BlockTree<B>
 {
     // Head node. This is almost stabled.
-    head: *mut BlockTreeNode,
+    head: *mut BlockTreeNode<B>,
 
     // Last node of longest chain
-    last: *mut BlockTreeNode,
+    last: *mut BlockTreeNode<B>,
 
     // Cache of length
     len: usize,
 }
 
 #[derive(Debug)]
-struct BlockTreeNode
+struct BlockTreeNode<B>
 {
-    prev: Option<*mut BlockTreeNode>,
-    nexts: Vec<*mut BlockTreeNode>,
-    block: BlockData,
-
-    // Cache to reduce computation
-    block_hash: Sha256dHash,
+    prev: Option<*mut BlockTreeNode<B>>,
+    nexts: Vec<*mut BlockTreeNode<B>>,
+    block: B,
 }
 
-impl BlockTree
+impl<B: StoredBlock> BlockTree<B>
 {
-    fn with_start(block: BlockData) -> BlockTree
+    fn with_start(block: B) -> BlockTree<B>
     {
         let node = BlockTreeNode {
             prev: None,
             nexts: vec![],
-            block_hash: block.bitcoin_hash(),
             block,
         };
         let node_ptr = node.into_ptr();
@@ -237,7 +241,7 @@ impl BlockTree
         self.len
     }
 
-    fn try_add(&mut self, block: BlockData) -> Result<(&BlockData, Option<StabledBlock>), InvalidBlock>
+    fn try_add(&mut self, block: B) -> Result<(&B, Option<StabledBlock<B>>), InvalidBlock>
     {
         unsafe {
             // Search prev block of given block
@@ -294,13 +298,13 @@ impl BlockTree
         }
     }
 
-    fn iter(&self) -> BlockTreeIter
+    fn iter(&self) -> BlockTreeIter<B>
     {
         unsafe { BlockTreeIter::from_last_node(self.last) }
     }
 }
 
-impl Drop for BlockTree
+impl<B> Drop for BlockTree<B>
 {
     fn drop(&mut self)
     {
@@ -308,21 +312,20 @@ impl Drop for BlockTree
     }
 }
 
-impl BlockTreeNode
+impl<B> BlockTreeNode<B>
 {
-    fn into_ptr(self) -> *mut BlockTreeNode
+    fn into_ptr(self) -> *mut BlockTreeNode<B>
     {
         Box::into_raw(Box::new(self))
     }
 }
 
 // Make sure `node` is not null
-unsafe fn append_block_to_node(node: *mut BlockTreeNode, block: BlockData) -> *mut BlockTreeNode
+unsafe fn append_block_to_node<B: StoredBlock>(node: *mut BlockTreeNode<B>, block: B) -> *mut BlockTreeNode<B>
 {
     let new_node = BlockTreeNode {
         prev: Some(node.clone()),
         nexts: vec![],
-        block_hash: block.bitcoin_hash(),
         block,
     };
     let new_node_ptr = new_node.into_ptr();
@@ -332,10 +335,13 @@ unsafe fn append_block_to_node(node: *mut BlockTreeNode, block: BlockData) -> *m
 
 // Serch root node first
 // Make sure `node` is not null
-unsafe fn find_node_by_hash(node_ptr: *mut BlockTreeNode, hash: &Sha256dHash) -> Option<*mut BlockTreeNode>
+unsafe fn find_node_by_hash<B: StoredBlock>(
+    node_ptr: *mut BlockTreeNode<B>,
+    hash: &Sha256dHash,
+) -> Option<*mut BlockTreeNode<B>>
 {
     let node = node_ptr.as_ref().unwrap();
-    if node.block_hash == *hash {
+    if node.block.bitcoin_hash() == *hash {
         return Some(node_ptr);
     }
 
@@ -350,7 +356,7 @@ unsafe fn find_node_by_hash(node_ptr: *mut BlockTreeNode, hash: &Sha256dHash) ->
 }
 
 // Make sure `node` is not null
-unsafe fn depth_from_root(node_ptr: *mut BlockTreeNode) -> usize
+unsafe fn depth_from_root<B: StoredBlock>(node_ptr: *mut BlockTreeNode<B>) -> usize
 {
     let node = node_ptr.as_ref().unwrap();
     if let Some(prev) = node.prev {
@@ -361,7 +367,7 @@ unsafe fn depth_from_root(node_ptr: *mut BlockTreeNode) -> usize
 }
 
 // Make sure `from` is not null
-unsafe fn find_prior_node(from: *mut BlockTreeNode, back: usize) -> Option<*mut BlockTreeNode>
+unsafe fn find_prior_node<B: StoredBlock>(from: *mut BlockTreeNode<B>, back: usize) -> Option<*mut BlockTreeNode<B>>
 {
     if back == 0 {
         return Some(from);
@@ -373,7 +379,7 @@ unsafe fn find_prior_node(from: *mut BlockTreeNode, back: usize) -> Option<*mut 
 }
 
 // Make sure `node_ptr` is not null.
-unsafe fn drop_with_sub_node(node_ptr: *mut BlockTreeNode)
+unsafe fn drop_with_sub_node<B>(node_ptr: *mut BlockTreeNode<B>)
 {
     let node = node_ptr.as_ref().unwrap();
     for next in node.nexts.iter() {
@@ -382,20 +388,20 @@ unsafe fn drop_with_sub_node(node_ptr: *mut BlockTreeNode)
     drop(Box::from_raw(node_ptr));
 }
 
-struct BlockTreeIter<'a>
+struct BlockTreeIter<'a, B: 'a>
 {
     // to reduce memory allocation, using array with Option instead using Vec
-    nodes: [Option<*mut BlockTreeNode>; ENOUGH_CONFIRMATION + 1],
-    _lifetime: PhantomData<&'a BlockTreeNode>,
+    nodes: [Option<*mut BlockTreeNode<B>>; ENOUGH_CONFIRMATION + 1],
+    _lifetime: PhantomData<&'a BlockTreeNode<B>>,
     next: usize,
     next_back: usize,
     finished: bool,
 }
 
-impl<'a> BlockTreeIter<'a>
+impl<'a, B: StoredBlock> BlockTreeIter<'a, B>
 {
     // Make sure `last` is not null
-    unsafe fn from_last_node(last: *mut BlockTreeNode) -> BlockTreeIter<'a>
+    unsafe fn from_last_node(last: *mut BlockTreeNode<B>) -> BlockTreeIter<'a, B>
     {
         let (count, mut prev_nodes) = prev_nodes(last);
         prev_nodes[count] = Some(last);
@@ -410,7 +416,9 @@ impl<'a> BlockTreeIter<'a>
 }
 
 // Make sure that `node_ptr` is not null
-unsafe fn prev_nodes(node_ptr: *mut BlockTreeNode) -> (usize, [Option<*mut BlockTreeNode>; ENOUGH_CONFIRMATION + 1])
+unsafe fn prev_nodes<B: StoredBlock>(
+    node_ptr: *mut BlockTreeNode<B>,
+) -> (usize, [Option<*mut BlockTreeNode<B>>; ENOUGH_CONFIRMATION + 1])
 {
     let node = node_ptr.as_ref().unwrap();
     if node.prev.is_none() {
@@ -424,9 +432,9 @@ unsafe fn prev_nodes(node_ptr: *mut BlockTreeNode) -> (usize, [Option<*mut Block
     (count + 1, prev_prev_nodes)
 }
 
-impl<'a> Iterator for BlockTreeIter<'a>
+impl<'a, B> Iterator for BlockTreeIter<'a, B>
 {
-    type Item = *mut BlockTreeNode;
+    type Item = *mut BlockTreeNode<B>;
 
     fn next(&mut self) -> Option<Self::Item>
     {
@@ -447,7 +455,7 @@ impl<'a> Iterator for BlockTreeIter<'a>
     }
 }
 
-impl<'a> DoubleEndedIterator for BlockTreeIter<'a>
+impl<'a, B> DoubleEndedIterator for BlockTreeIter<'a, B>
 {
     fn next_back(&mut self) -> Option<Self::Item>
     {

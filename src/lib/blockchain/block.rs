@@ -1,8 +1,14 @@
-use bitcoin::blockdata::block::BlockHeader;
+use bitcoin::blockdata::block::{Block, BlockHeader};
 use bitcoin::network::serialize::BitcoinHash;
-use bitcoin::util::hash::Sha256dHash;
-use std::sync::Arc;
 
+pub trait StoredBlock: BitcoinHash + Clone
+{
+    fn new(block: Block) -> Self;
+
+    fn header(&self) -> &BlockHeader;
+}
+
+/*
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BlockData
 {
@@ -33,3 +39,4 @@ impl BitcoinHash for BlockData
         self.hash
     }
 }
+*/
