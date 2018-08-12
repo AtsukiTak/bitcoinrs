@@ -6,7 +6,7 @@ use bitcoin::util::Error as BitcoinError;
 use bitcoin::util::hash::Sha256dHash;
 
 use futures::Future;
-use tokio::net::TcpStream as AsyncTcpStream;
+use tokio_tcp::TcpStream as AsyncTcpStream;
 
 use error::Error;
 
@@ -138,8 +138,8 @@ impl AsyncSocket
         let serialized = self.codec.encode_inner(msg);
         let (socket, codec, local_addr, remote_addr) = (self.socket, self.codec, self.local_addr, self.remote_addr);
 
-        ::tokio::io::write_all(socket, serialized)
-            .and_then(|(socket, _)| ::tokio::io::flush(socket))
+        ::tokio_io::io::write_all(socket, serialized)
+            .and_then(|(socket, _)| ::tokio_io::io::flush(socket))
             .map_err(Error::from)
             .map(move |socket| {
                 AsyncSocket {
@@ -157,7 +157,7 @@ impl AsyncSocket
         let (socket, codec, local_addr, remote_addr) = (self.socket, self.codec, self.local_addr, self.remote_addr);
         let codec2 = codec.clone();
         let header_buf: [u8; RAW_NETWORK_MESSAGE_HEADER_SIZE] = [0; RAW_NETWORK_MESSAGE_HEADER_SIZE];
-        ::tokio::io::read_exact(socket, header_buf)
+        ::tokio_io::io::read_exact(socket, header_buf)
             .map_err(Error::from)
             .and_then(move |(socket, bytes)| {
                 let header = codec.decode_msg_header(&bytes)?;
@@ -166,7 +166,7 @@ impl AsyncSocket
             .and_then(|(socket, header)| {
                 let mut buf = Vec::with_capacity(header.payload_size as usize);
                 buf.resize(header.payload_size as usize, 0);
-                ::tokio::io::read_exact(socket, buf)
+                ::tokio_io::io::read_exact(socket, buf)
                     .map_err(Error::from)
                     .map(|(socket, bytes)| (socket, bytes, header))
             })

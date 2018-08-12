@@ -1,6 +1,5 @@
 extern crate bitcoin;
 extern crate futures;
-extern crate tokio;
 
 #[macro_use]
 extern crate log;
@@ -32,16 +31,9 @@ fn main()
             let start_block = HeaderOnlyBlock::new(start_block());
             let blockchain = BlockChainMut::with_start(start_block);
             initial_block_download(conn, blockchain)
-        })
-        .map_err(|e| {
-            error!("{:?}", e);
-        })
-        .map(|res| {
-            info!("Complete ibd process!!");
         });
 
-    let mut executor = ::tokio::executor::current_thread::CurrentThread::new();
-    executor.spawn(ibd_fut).run().unwrap();
+    ibd_fut.wait().unwrap();
 }
 
 fn start_block() -> Block

@@ -1,7 +1,7 @@
 extern crate bitcoin;
 extern crate futures;
-extern crate tokio;
-extern crate tokio_codec;
+extern crate tokio_io;
+extern crate tokio_tcp;
 extern crate bytes;
 #[macro_use]
 extern crate log;
