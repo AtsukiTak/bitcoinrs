@@ -1,43 +1,108 @@
+use bitcoin::blockdata::block::Block;
+use bitcoin::network::serialize::BitcoinHash;
 use bitcoin::util::hash::Sha256dHash;
-use std::sync::Arc;
 
 use super::StoredBlock;
 
-/// A simple implementation of blockchain.
-/// This data structure is immutable, in contrast to that `BlockChainMut` is mutable.
-/// You can `clone` this with no cost.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BlockChain<B>
+pub trait BlockChain
 {
-    pub(super) blocks: Arc<Vec<B>>,
+    type Block: StoredBlock;
+
+    fn try_add_block(&mut self, block: Block) -> Option<&Self::Block>;
+
+    fn active_chain<'a>(&'a self) -> <&'a Self as IntoActiveChain>::ActiveChain
+    where &'a Self: IntoActiveChain
+    {
+        self.into_active_chain()
+    }
 }
 
-impl<B: StoredBlock> BlockChain<B>
+pub trait IntoActiveChain
 {
+    type ActiveChain: ActiveChain;
+
+    fn into_active_chain(self) -> Self::ActiveChain;
+}
+
+/// Oldest block comes first, latest block comes last.
+pub trait ActiveChain
+{
+    type Block;
+    type Iter: Iterator<Item = Self::Block> + DoubleEndedIterator;
+
+    fn len(&self) -> usize;
+
+    fn iter(&self) -> Self::Iter;
+
+    /// Get latest block
+    fn latest_block(&self) -> Self::Block
+    {
+        self.iter().rev().next().expect("No blocks in ActiveChain")
+    }
+
+    /// Get specified block
+    fn get_block(&self, hash: Sha256dHash) -> Option<Self::Block>
+    where Self::Block: BitcoinHash
+    {
+        self.iter().find(move |b| b.bitcoin_hash() == hash)
+    }
+}
+
+/// A simple implementation of blockchain.
+///  All blocks are active.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LinerBlockChain<B>
+{
+    blocks: Vec<B>,
+}
+
+pub struct ActiveLinerBlockChain<'a, B: 'a>
+{
+    blocks: &'a Vec<B>,
+}
+
+impl<B: StoredBlock> LinerBlockChain<B>
+{
+    pub fn new(blocks: Vec<B>) -> LinerBlockChain<B>
+    {
+        LinerBlockChain { blocks }
+    }
+}
+
+impl<B: StoredBlock> BlockChain for LinerBlockChain<B>
+{
+    type Block = B;
+
+    fn try_add_block(&mut self, block: Block) -> Option<&Self::Block>
+    {
+        self.blocks.push(block);
+        Some(self.blocks.last().unwrap())
+    }
+}
+
+impl<'a, B> IntoActiveChain for &'a LinerBlockChain<B>
+{
+    type ActiveChain = ActiveLinerBlockChain<'a, B>;
+
+    fn into_active_chain(self) -> Self::ActiveChain
+    {
+        ActiveLinerBlockChain { blocks: &self.blcoks }
+    }
+}
+
+impl<'a, B> ActiveChain for ActiveLinerBlockChain<'a, B>
+{
+    type Block = &'a B;
+    type Iter = ::std::slice::Iter<'a, B>;
+
     /// Get length of current best chain.
-    pub fn len(&self) -> usize
+    fn len(&self) -> usize
     {
         self.blocks.len()
     }
 
-    /// Get iterator representing current best block chain.
-    /// Oldest block comes first, latest block comes last.
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a B> + DoubleEndedIterator
+    fn iter(&self) -> Self::Iter
     {
         self.blocks.iter()
-    }
-
-    /// Get latest block
-    ///
-    /// The key of this function is `unwrap`; since there are always genesis block at least,
-    /// we can call `unwrap`.
-    pub fn latest_block(&self) -> &B
-    {
-        self.iter().rev().next().unwrap() // since there are always genesis block
-    }
-
-    pub fn get_block(&self, hash: &Sha256dHash) -> Option<&B>
-    {
-        self.iter().find(|b| b.bitcoin_hash() == *hash)
     }
 }

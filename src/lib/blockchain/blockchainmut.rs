@@ -3,7 +3,9 @@ use bitcoin::network::constants::Network;
 use bitcoin::util::hash::Sha256dHash;
 use std::sync::Arc;
 
-use super::{BlockChain, BlockTree, StoredBlock};
+use super::{BlockTree, StoredBlock};
+
+const ENOUGH_CONFIRMATION: usize = 12;
 
 /// A simple implementation of blockchain.
 pub struct BlockChainMut<B>
@@ -78,14 +80,6 @@ impl<B: StoredBlock> BlockChainMut<B>
     pub fn to_vec(&self) -> Vec<&B>
     {
         self.iter().collect()
-    }
-
-    /// Get immutable `BlockChain`.
-    pub fn freeze(&self) -> BlockChain<B>
-    {
-        BlockChain {
-            blocks: Arc::new(self.iter().cloned().collect()),
-        }
     }
 
     /// Get latest block
