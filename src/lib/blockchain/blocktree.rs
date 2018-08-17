@@ -18,11 +18,11 @@ pub struct BlockTree<B>
 }
 
 #[derive(Debug)]
-pub struct BlockTreeNode<B>
+struct BlockTreeNode<B>
 {
     prev: Option<*mut BlockTreeNode<B>>,
     nexts: Vec<*mut BlockTreeNode<B>>,
-    pub(super) block: B,
+    block: B,
 }
 
 impl<B: StoredBlock> BlockTree<B>
@@ -105,9 +105,14 @@ impl<B: StoredBlock> BlockTree<B>
         }
     }
 
-    pub fn iter(&self) -> BlockTreeIter<B>
+    pub fn iter(&self) -> impl Iterator<Item = &B> + DoubleEndedIterator
     {
-        unsafe { BlockTreeIter::from_last_node(self.last) }
+        unsafe { BlockTreeIter::from_last_node(self.last).map(|node_ptr| &node_ptr.as_ref().unwrap().block) }
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut B> + DoubleEndedIterator
+    {
+        unsafe { BlockTreeIter::from_last_node(self.last).map(|node_ptr| &mut node_ptr.as_mut().unwrap().block) }
     }
 }
 
@@ -195,7 +200,7 @@ unsafe fn drop_with_sub_node<B>(node_ptr: *mut BlockTreeNode<B>)
     drop(Box::from_raw(node_ptr));
 }
 
-pub struct BlockTreeIter<'a, B: 'a>
+struct BlockTreeIter<'a, B: 'a>
 {
     // to reduce memory allocation, using array with Option instead using Vec
     nodes: [Option<*mut BlockTreeNode<B>>; ENOUGH_CONFIRMATION + 1],

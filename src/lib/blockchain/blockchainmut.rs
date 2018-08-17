@@ -11,7 +11,7 @@ const ENOUGH_CONFIRMATION: usize = 12;
 pub struct BlockChainMut<B>
 {
     stable_chain: StableBlockChain<B>,
-    unstable_chain: UnstableBlockChain<B>,
+    unstable_chain: BlockTree<B>,
 }
 
 #[derive(Debug)]
@@ -33,7 +33,7 @@ impl<B: StoredBlock> BlockChainMut<B>
     {
         BlockChainMut {
             stable_chain: StableBlockChain::new(),
-            unstable_chain: UnstableBlockChain::with_start(block),
+            unstable_chain: BlockTree::with_start(block),
         }
     }
 
@@ -147,49 +147,8 @@ impl<B: StoredBlock> StableBlockChain<B>
     }
 }
 
-/// Just make sure that given Block is returned by `UnstableBlockChain::try_add_block`.
+/// Just make sure that given Block is returned by `BlockTree::try_add_block`.
 pub struct StabledBlock<B>(pub B);
-
-/// Chain of blocks which is **NOT** confirmed enough.
-struct UnstableBlockChain<B>
-{
-    tree: BlockTree<B>,
-}
-
-impl<B: StoredBlock> UnstableBlockChain<B>
-{
-    fn with_start(block: B) -> UnstableBlockChain<B>
-    {
-        UnstableBlockChain {
-            tree: BlockTree::with_start(block),
-        }
-    }
-
-    fn len(&self) -> usize
-    {
-        self.tree.len()
-    }
-
-    fn try_add(&mut self, block: B) -> Result<(&B, Option<StabledBlock<B>>), InvalidBlock>
-    {
-        self.tree.try_add(block)
-    }
-
-    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a B> + DoubleEndedIterator
-    {
-        self.tree
-            .iter()
-            .map(|node_ptr| unsafe { &node_ptr.as_ref().unwrap().block })
-    }
-
-    fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut B> + DoubleEndedIterator
-    {
-        self.tree
-            .iter()
-            .map(|node_ptr| unsafe { &mut node_ptr.as_mut().unwrap().block })
-    }
-}
-
 
 /// TODO: Should test re-org case
 #[cfg(test)]
