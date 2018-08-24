@@ -3,7 +3,7 @@ use bitcoin::network::constants::Network;
 use bitcoin::util::hash::Sha256dHash;
 use std::sync::Arc;
 
-use super::{BlockTree, StoredBlock};
+use super::{BlockData, BlockTree};
 
 const ENOUGH_CONFIRMATION: usize = 12;
 
@@ -17,7 +17,7 @@ pub struct BlockChainMut<B>
 #[derive(Debug)]
 pub struct InvalidBlock;
 
-impl<B: StoredBlock> BlockChainMut<B>
+impl<B: BlockData> BlockChainMut<B>
 {
     /// Create a new `BlockChainMut` struct with main net genesis block.
     /// If you want another network (such as test network) genesis block,
@@ -49,10 +49,13 @@ impl<B: StoredBlock> BlockChainMut<B>
     {
         // TODO : Check PoW of given block
 
-        let (stored_block, maybe_stabled) = self.unstable_chain.try_add(block)?;
-        if let Some(stabled) = maybe_stabled {
-            self.stable_chain.add_block(stabled);
+        let stored_block = self.unstable_chain.try_add(block)?;
+
+        if self.unstable_chain.len() > ENOUGH_CONFIRMATION {
+            let stabled_block = self.unstable_chain.pop_head();
+            self.stable_chain.add_block(stabled_block);
         }
+
         Ok(stored_block)
     }
 
@@ -129,7 +132,7 @@ struct StableBlockChain<B>
     blocks: Vec<B>,
 }
 
-impl<B: StoredBlock> StableBlockChain<B>
+impl<B: BlockData> StableBlockChain<B>
 {
     fn new() -> StableBlockChain<B>
     {

@@ -2,26 +2,38 @@ use bitcoin::blockdata::block::{Block, BlockHeader};
 use bitcoin::network::serialize::BitcoinHash;
 use bitcoin::util::hash::Sha256dHash;
 
-pub trait StoredBlock: BitcoinHash + Clone
+/*  Trait definition */
+
+pub trait BlockData: BitcoinHash
 {
-    fn new(block: Block) -> Self;
+    fn height(&self) -> usize;
 
     fn header(&self) -> &BlockHeader;
 }
 
-pub trait StoredFullBlock: StoredBlock
+pub trait FullBlockData: StoredBlock
 {
     fn block(&self) -> &Block;
 }
 
-#[derive(Clone, Debug)]
-pub struct HeaderOnlyBlock
+pub trait BlockGenerator
 {
-    header: BlockHeader,
+    type BlockData: BlockData;
+
+    fn generate_block(&mut self, block: RawBlockData) -> Self::BlockData;
+}
+
+/*  BlockData definition */
+
+#[derive(Debug)]
+pub struct RawBlockData
+{
+    block: Block,
+    height: usize,
     hash: Sha256dHash,
 }
 
-impl BitcoinHash for HeaderOnlyBlock
+impl BitcoinHash for RawBlockData
 {
     fn bitcoin_hash(&self) -> Sha256dHash
     {
@@ -29,18 +41,66 @@ impl BitcoinHash for HeaderOnlyBlock
     }
 }
 
-impl StoredBlock for HeaderOnlyBlock
+impl BlockData for RawBlockData
 {
-    fn new(block: Block) -> Self
+    fn height(&self) -> usize
     {
-        HeaderOnlyBlock {
-            hash: block.bitcoin_hash(),
-            header: block.header,
-        }
+        self.height
     }
 
     fn header(&self) -> &BlockHeader
     {
+        &self.block.header
+    }
+}
+
+impl FullBlockData for RawBlockData
+{
+    fn block(&self) -> &Block
+    {
+        &self.block
+    }
+}
+
+#[derive(Debug)]
+pub struct HeaderOnlyBlockData
+{
+    header: BlockHeader,
+    height: usize,
+    hash: Sha256dHash,
+}
+
+impl BitcoinHash for HeaderOnlyBlockData
+{
+    fn bitcoin_hash(&self) -> Sha256dHash
+    {
+        self.hash
+    }
+}
+
+impl BlockData for HeaderOnlyBlockData
+{
+    fn header(&self) -> &BlockHeader
+    {
         &self.header
+    }
+
+    fn height(&self) -> usize
+    {
+        self.height
+    }
+}
+
+/*  BlockGenerator definition */
+
+pub struct DefaultBlockGenerator {}
+
+impl BlockGenerator for DefaultBlockGenerator
+{
+    type BlockData = RawBlockData;
+
+    fn generate_block(&mut self, block: RawBlockData) -> Self::BlockData
+    {
+        block
     }
 }
