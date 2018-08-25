@@ -1,7 +1,7 @@
 use bitcoin::blockdata::block::Block;
 use bitcoin::util::hash::Sha256dHash;
 
-use super::{blocktree, BlockData, BlockGenerator, BlockTree, DefaultBlockGenerator, NotFoundPrevBlock};
+use super::{blocktree, BlockData, BlockGenerator, BlockTree, NotFoundPrevBlock};
 
 const ENOUGH_CONFIRMATION: usize = 50;
 
@@ -15,30 +15,26 @@ pub struct BlockChainMut<B, G>
     unstable_chain: BlockTree<B, G>,
 }
 
-impl<B> BlockChainMut<B, DefaultBlockGenerator>
-where B: BlockData
+impl<B, G> BlockChainMut<B, G>
+where
+    B: BlockData,
+    G: BlockGenerator<BlockData = B>,
 {
     /// Creaet a new `BlockChainMut` struct with start block.
     /// Note that given start block **MUST** be stable one.
     ///
     /// # Panic
     /// if a length of `blocks` is 0.
-    pub fn with_initial(blocks: Vec<B>) -> BlockChainMut<B, DefaultBlockGenerator>
+    pub fn with_initial(blocks: Vec<B>, generator: G) -> BlockChainMut<B, G>
     {
         assert!(blocks.len() > 0);
 
         BlockChainMut {
             stable_chain: StableBlockChain::new(),
-            unstable_chain: BlockTree::with_initial(blocks),
+            unstable_chain: BlockTree::with_initial(blocks, generator),
         }
     }
-}
 
-impl<B, G> BlockChainMut<B, G>
-where
-    B: BlockData,
-    G: BlockGenerator<BlockData = B>,
-{
     /// Try to add a new block.
     /// If success, reference to given block is returned.
     pub fn try_add(&mut self, block: Block) -> Result<&B, NotFoundPrevBlock>

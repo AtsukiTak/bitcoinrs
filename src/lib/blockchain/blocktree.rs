@@ -2,7 +2,7 @@ use bitcoin::util::hash::Sha256dHash;
 use bitcoin::blockdata::block::Block;
 use std::ptr::NonNull;
 
-use super::{BlockData, BlockGenerator, DefaultBlockGenerator, NotFoundPrevBlock, RawBlockData};
+use super::{BlockData, BlockGenerator, NotFoundPrevBlock, RawBlockData};
 
 
 /// A honest implementation of blockchain.
@@ -29,15 +29,17 @@ struct Node<B>
     block: B,
 }
 
-impl<B> BlockTree<B, DefaultBlockGenerator>
-where B: BlockData
+impl<B, G> BlockTree<B, G>
+where
+    B: BlockData,
+    G: BlockGenerator<BlockData = B>,
 {
     /// # Note
     /// Does not check blockchain validity
     ///
     /// # Panic
     /// if a length of `blocks` is 0.
-    pub fn with_initial(blocks: Vec<B>) -> BlockTree<B, DefaultBlockGenerator>
+    pub fn with_initial(blocks: Vec<B>, generator: G) -> BlockTree<B, G>
     {
         assert!(blocks.len() > 0);
 
@@ -64,16 +66,10 @@ where B: BlockData
             head: *nodes.first().unwrap(),
             tail: *nodes.last().unwrap(),
             active_nodes: nodes,
-            block_generator: DefaultBlockGenerator,
+            block_generator: generator,
         }
     }
-}
 
-impl<B, G> BlockTree<B, G>
-where
-    B: BlockData,
-    G: BlockGenerator<BlockData = B>,
-{
     pub fn try_add(&mut self, block: Block) -> Result<&B, NotFoundPrevBlock>
     {
         /* Defines some useful function */
@@ -287,6 +283,7 @@ impl<'a, B: BlockData> ActiveChain<'a, B>
 mod tests
 {
     use super::*;
+    use blockchain::HeaderOnlyBlockData;
     use bitcoin::blockdata::block::{Block, BlockHeader};
 
     fn dummy_block_header(prev_hash: Sha256dHash) -> BlockHeader
@@ -307,15 +304,23 @@ mod tests
     {
         let start_block_header = dummy_block_header(Sha256dHash::default());
         let next_block_header = dummy_block_header(start_block_header.bitcoin_hash());
-        let mut blocktree = BlockTree::with_start(BlockData::new(start_block_header.clone()));
+        let start_block = HeaderOnlyBlockData::new(start_block_header, 0);
+        let next_block = Block {
+            header: next_block_header,
+            txdata: Vec::new(),
+        };
+        let mut blocktree = BlockTree::with_initial(vec![start_block]);
 
-        blocktree.try_add(BlockData::new(next_block_header.clone())).unwrap(); // Should success.
+        assert_eq!(blocktree.active_chain().len(), 1);
 
-        assert_eq!(blocktree.len(), 2);
+        blocktree.try_add(next_block).unwrap(); // Should success.
+
+        assert_eq!(blocktree.active_chain().len(), 2);
 
         let headers: Vec<_> = blocktree
+            .active_nodes
             .iter()
-            .map(|node| unsafe { (*node).block.header().clone() })
+            .map(|node| unsafe { node.as_ref().block.header().clone() })
             .collect();
         assert_eq!(headers, vec![start_block_header, next_block_header]);
     }
