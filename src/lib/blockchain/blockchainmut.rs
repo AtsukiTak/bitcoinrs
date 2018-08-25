@@ -16,9 +16,6 @@ pub struct BlockChainMut<B, G>
     unstable_chain: BlockTree<B, G>,
 }
 
-#[derive(Debug)]
-pub struct InvalidBlock;
-
 impl<B> BlockChainMut<B, DefaultBlockGenerator>
 where B: BlockData
 {
@@ -55,7 +52,7 @@ where
     pub fn active_chain(&self) -> ActiveChain<B>
     {
         ActiveChain {
-            stabled: &self.stable_chain.blocks,
+            stabled: self.stable_chain.as_vec(),
             unstabled: self.unstable_chain.active_chain(),
         }
     }
@@ -142,14 +139,14 @@ impl<B: BlockData> StableBlockChain<B>
         StableBlockChain { blocks: Vec::new() }
     }
 
-    fn len(&self) -> usize
-    {
-        self.blocks.len()
-    }
-
     fn add_block(&mut self, block: B)
     {
         self.blocks.push(block);
+    }
+
+    fn as_vec(&self) -> &Vec<B>
+    {
+        &self.blocks
     }
 }
 
