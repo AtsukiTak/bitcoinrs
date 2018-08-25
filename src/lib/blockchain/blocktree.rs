@@ -34,8 +34,13 @@ where B: BlockData
 {
     /// # Note
     /// Does not check blockchain validity
+    ///
+    /// # Panic
+    /// if a length of `blocks` is 0.
     pub fn with_initial(blocks: Vec<B>) -> BlockTree<B, DefaultBlockGenerator>
     {
+        assert!(blocks.len() > 0);
+
         let mut nodes: Vec<NonNull<Node<B>>> = blocks.into_iter().map(Node::new).collect();
 
         {

@@ -20,8 +20,13 @@ where B: BlockData
 {
     /// Creaet a new `BlockChainMut` struct with start block.
     /// Note that given start block **MUST** be stable one.
+    ///
+    /// # Panic
+    /// if a length of `blocks` is 0.
     pub fn with_initial(blocks: Vec<B>) -> BlockChainMut<B, DefaultBlockGenerator>
     {
+        assert!(blocks.len() > 0);
+
         BlockChainMut {
             stable_chain: StableBlockChain::new(),
             unstable_chain: BlockTree::with_initial(blocks),
