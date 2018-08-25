@@ -1,5 +1,4 @@
-use bitcoin::blockdata::{block::Block, constants::genesis_block};
-use bitcoin::network::constants::Network;
+use bitcoin::blockdata::block::Block;
 use bitcoin::util::hash::Sha256dHash;
 
 use super::{blocktree, BlockData, BlockGenerator, BlockTree, DefaultBlockGenerator, NotFoundPrevBlock};
@@ -56,66 +55,6 @@ where
             unstabled: self.unstable_chain.active_chain(),
         }
     }
-
-    /*
-    /// Get iterator representing current best block chain.
-    /// Oldest block comes first, latest block comes last.
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a B> + DoubleEndedIterator
-    {
-        let unstable_blocks = self.unstable_chain.iter();
-        let stable_blocks = self.stable_chain.blocks.iter();
-        stable_blocks.chain(unstable_blocks)
-    }
-
-    pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut B> + DoubleEndedIterator
-    {
-        let unstable_blocks = self.unstable_chain.iter_mut();
-        let stable_blocks = self.stable_chain.blocks.iter_mut();
-        stable_blocks.chain(unstable_blocks)
-    }
-
-    /// Get vector representing best block chain.
-    /// Oldest block comes first, latest block comes last.
-    ///
-    /// # Note
-    /// Is there better way to create `Vec`?
-    pub fn to_vec(&self) -> Vec<&B>
-    {
-        self.iter().collect()
-    }
-
-    /// Get latest block
-    ///
-    /// The key of this function is `unwrap`; since there are always start block at least,
-    /// we can call `unwrap`.
-    pub fn latest_block(&self) -> &B
-    {
-        self.iter().rev().next().unwrap() // since there are always start block
-    }
-
-    /// Get block whose hash is exactly same with given hash.
-    pub fn get_block(&self, hash: Sha256dHash) -> Option<&B>
-    {
-        self.iter().find(move |b| b.bitcoin_hash() == hash)
-    }
-
-    pub fn get_block_mut(&mut self, hash: Sha256dHash) -> Option<&mut B>
-    {
-        self.iter_mut().find(move |b| b.bitcoin_hash() == hash)
-    }
-
-    /// Get locator blocks iterator.
-    ///
-    /// # Note
-    /// Current implementation is **VERY** **VERY** simple.
-    /// It should be improved in future.
-    /// Bitcoin core's implementation is here.
-    /// https://github.com/bitcoin/bitcoin/blob/master/src/chain.cpp#L23
-    pub fn locator_blocks<'a>(&'a self) -> impl Iterator<Item = &'a B>
-    {
-        self.iter().rev().take(10)
-    }
-    */
 }
 
 impl<B, G> ::std::fmt::Debug for BlockChainMut<B, G>
