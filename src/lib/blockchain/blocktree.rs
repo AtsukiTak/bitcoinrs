@@ -176,6 +176,7 @@ where
     {
         let poped_head = self.head;
         let mut next_head = self.active_nodes[1]; // panic if length is 1.
+        self.active_nodes.remove(0);
 
         // Drop nodes which will be dangling.
         for may_drop_node in unsafe { poped_head.as_ref().nexts.iter() } {
