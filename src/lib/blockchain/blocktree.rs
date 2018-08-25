@@ -5,6 +5,7 @@ use std::ptr::NonNull;
 use super::{BlockData, BlockGenerator, DefaultBlockGenerator, NotFoundPrevBlock, RawBlockData};
 
 
+/// A honest implementation of blockchain.
 pub struct BlockTree<B, G>
 {
     // Head node.
@@ -168,10 +169,26 @@ where
         }
     }
 
+    /// Pop head block.
+    /// # Panic
+    /// if the number of block contained is 1.
     pub fn pop_head_unchecked(&mut self) -> B
     {
-        // TODO
-        panic!();
+        let poped_head = self.head;
+        let mut next_head = self.active_nodes[1]; // panic if length is 1.
+
+        // Drop nodes which will be dangling.
+        for may_drop_node in unsafe { poped_head.as_ref().nexts.iter() } {
+            if *may_drop_node != next_head {
+                unsafe { drop_with_sub_node(*may_drop_node) };
+            }
+        }
+
+        unsafe {
+            next_head.as_mut().prev = None;
+        }
+
+        unsafe { Node::into_block(Box::from_raw(poped_head.as_ptr())) }
     }
 }
 

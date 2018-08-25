@@ -6,7 +6,10 @@ use super::{blocktree, BlockData, BlockGenerator, BlockTree, DefaultBlockGenerat
 
 const ENOUGH_CONFIRMATION: usize = 50;
 
-/// A simple implementation of blockchain.
+/// A hybrid implementation of blockchain.
+/// The performance is higher than `BlockTree`.
+/// To achieve such performance, this implementation is based on tiny assumption;
+/// the block which has enough confirmation will never be changed.
 pub struct BlockChainMut<B, G>
 {
     stable_chain: StableBlockChain<B>,
