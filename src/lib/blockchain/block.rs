@@ -82,6 +82,18 @@ pub struct HeaderOnlyBlockData
     hash: Sha256dHash,
 }
 
+impl HeaderOnlyBlockData
+{
+    pub fn new(header: BlockHeader, height: usize) -> HeaderOnlyBlockData
+    {
+        HeaderOnlyBlockData {
+            hash: header.bitcoin_hash(),
+            height,
+            header,
+        }
+    }
+}
+
 impl BitcoinHash for HeaderOnlyBlockData
 {
     fn bitcoin_hash(&self) -> Sha256dHash
