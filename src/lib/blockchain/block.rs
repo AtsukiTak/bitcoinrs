@@ -11,7 +11,7 @@ pub trait BlockData: BitcoinHash
     fn header(&self) -> &BlockHeader;
 }
 
-pub trait FullBlockData: StoredBlock
+pub trait FullBlockData: BlockData
 {
     fn block(&self) -> &Block;
 }
@@ -31,6 +31,18 @@ pub struct RawBlockData
     block: Block,
     height: usize,
     hash: Sha256dHash,
+}
+
+impl RawBlockData
+{
+    pub fn new(block: Block, height: usize) -> RawBlockData
+    {
+        RawBlockData {
+            hash: block.bitcoin_hash(),
+            block,
+            height,
+        }
+    }
 }
 
 impl BitcoinHash for RawBlockData
@@ -93,7 +105,7 @@ impl BlockData for HeaderOnlyBlockData
 
 /*  BlockGenerator definition */
 
-pub struct DefaultBlockGenerator {}
+pub struct DefaultBlockGenerator;
 
 impl BlockGenerator for DefaultBlockGenerator
 {

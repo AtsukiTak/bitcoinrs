@@ -2,13 +2,13 @@ use bitcoin::blockdata::block::Block;
 use bitcoin::network::serialize::BitcoinHash;
 use bitcoin::util::hash::Sha256dHash;
 
-use super::StoredBlock;
+use super::BlockData;
 
 pub trait BlockChain
 {
-    type Block: StoredBlock;
+    type Block: BlockData;;
 
-    fn try_add_block(&mut self, block: Block) -> Option<&Self::Block>;
+    fn try_add_block(&mut self, block: Block) -> Result<&Self::Block, NotFoundPrevBlock>;
 
     fn active_chain<'a>(&'a self) -> <&'a Self as IntoActiveChain>::ActiveChain
     where &'a Self: IntoActiveChain

@@ -5,7 +5,7 @@ use futures::future::{loop_fn, Future, Loop};
 use std::cmp::min;
 
 use connection::Connection;
-use blockchain::{BlockChainMut, StoredBlock};
+use blockchain::{BlockChainMut, BlockData, BlockGenerator};
 use error::{Error, ErrorKind};
 use super::{getblocks, getheaders};
 
@@ -14,12 +14,22 @@ use super::{getblocks, getheaders};
 /// block. When process is completed, finally `Connection` is returned.
 /// Note that `start_block` must be a stabled one such as genesis block or
 /// enough confirmed block.
-pub fn initial_block_download<B: StoredBlock>(
+pub fn initial_block_download<B, G>(
     conn: Connection,
-    block_chain: BlockChainMut<B>,
-) -> impl Future<Item = (Connection, BlockChainMut<B>), Error = Error>
+    block_chain: BlockChainMut<B, G>,
+) -> impl Future<Item = (Connection, BlockChainMut<B, G>), Error = Error>
+where
+    B: BlockData,
+    G: BlockGenerator<BlockData = B>,
 {
-    let locator_hashes = block_chain.locator_blocks().map(|b| b.bitcoin_hash()).collect();
+    let locator_hashes: Vec<Sha256dHash> = {
+        let mut vec = Vec::new();
+        let active_chain = block_chain.active_chain();
+        for block in active_chain.locator_blocks() {
+            vec.push(block.bitcoin_hash());
+        }
+        vec
+    };
     download_all_headers(conn, locator_hashes)
         .and_then(move |(conn, headers)| download_all_blocks(conn, headers, block_chain))
 }
@@ -50,11 +60,14 @@ fn download_all_headers(
     )
 }
 
-fn download_all_blocks<B: StoredBlock>(
+fn download_all_blocks<B, G>(
     conn: Connection,
     new_headers: Vec<BlockHeader>,
-    block_chain: BlockChainMut<B>,
-) -> impl Future<Item = (Connection, BlockChainMut<B>), Error = Error>
+    block_chain: BlockChainMut<B, G>,
+) -> impl Future<Item = (Connection, BlockChainMut<B, G>), Error = Error>
+where
+    B: BlockData,
+    G: BlockGenerator<BlockData = B>,
 {
     const NUM_BLOCKS_REQ_AT_ONCE: usize = 16;
 
@@ -63,11 +76,10 @@ fn download_all_blocks<B: StoredBlock>(
         |(conn, mut rmn_headers, mut block_chain)| {
             let n_req_blocks = min(rmn_headers.len(), NUM_BLOCKS_REQ_AT_ONCE);
             let req_header_hashes = rmn_headers.drain(..n_req_blocks).map(|h| h.bitcoin_hash()).collect();
-            getblocks(conn, req_header_hashes).and_then(move |(conn, mut blocks)| {
+            getblocks(conn, req_header_hashes).and_then(move |(conn, blocks)| {
                 // Store all blocks into blockchain
-                for block in blocks.drain(..) {
-                    let stored_block = B::new(block);
-                    match block_chain.try_add(stored_block) {
+                for block in blocks {
+                    match block_chain.try_add(block) {
                         Ok(_) => info!("Added a new block"),
                         Err(_e) => {
                             warn!("Peer {} sends us an invalid block", conn);

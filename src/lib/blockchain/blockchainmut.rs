@@ -1,64 +1,63 @@
-use bitcoin::blockdata::constants::genesis_block;
+use bitcoin::blockdata::{block::Block, constants::genesis_block};
 use bitcoin::network::constants::Network;
 use bitcoin::util::hash::Sha256dHash;
-use std::sync::Arc;
 
-use super::{BlockData, BlockTree};
+use super::{blocktree, BlockData, BlockGenerator, BlockTree, DefaultBlockGenerator, NotFoundPrevBlock};
 
-const ENOUGH_CONFIRMATION: usize = 12;
+const ENOUGH_CONFIRMATION: usize = 50;
 
 /// A simple implementation of blockchain.
-pub struct BlockChainMut<B>
+pub struct BlockChainMut<B, G>
 {
     stable_chain: StableBlockChain<B>,
-    unstable_chain: BlockTree<B>,
+    unstable_chain: BlockTree<B, G>,
 }
 
 #[derive(Debug)]
 pub struct InvalidBlock;
 
-impl<B: BlockData> BlockChainMut<B>
+impl<B> BlockChainMut<B, DefaultBlockGenerator>
+where B: BlockData
 {
-    /// Create a new `BlockChainMut` struct with main net genesis block.
-    /// If you want another network (such as test network) genesis block,
-    /// please use `with_start` function.
-    pub fn new() -> BlockChainMut<B>
-    {
-        BlockChainMut::with_start(B::new(genesis_block(Network::Bitcoin)))
-    }
-
     /// Creaet a new `BlockChainMut` struct with start block.
     /// Note that given start block **MUST** be stable one.
-    pub fn with_start(block: B) -> BlockChainMut<B>
+    pub fn with_initial(blocks: Vec<B>) -> BlockChainMut<B, DefaultBlockGenerator>
     {
         BlockChainMut {
             stable_chain: StableBlockChain::new(),
-            unstable_chain: BlockTree::with_start(block),
+            unstable_chain: BlockTree::with_initial(blocks),
         }
     }
+}
 
-    /// Get length of current best chain.
-    pub fn len(&self) -> usize
-    {
-        self.stable_chain.len() + self.unstable_chain.len()
-    }
-
+impl<B, G> BlockChainMut<B, G>
+where
+    B: BlockData,
+    G: BlockGenerator<BlockData = B>,
+{
     /// Try to add a new block.
     /// If success, reference to given block is returned.
-    pub fn try_add(&mut self, block: B) -> Result<&B, InvalidBlock>
+    pub fn try_add(&mut self, block: Block) -> Result<&B, NotFoundPrevBlock>
     {
-        // TODO : Check PoW of given block
-
-        let stored_block = self.unstable_chain.try_add(block)?;
-
-        if self.unstable_chain.len() > ENOUGH_CONFIRMATION {
-            let stabled_block = self.unstable_chain.pop_head();
+        while self.unstable_chain.active_chain().len() > ENOUGH_CONFIRMATION {
+            let stabled_block = self.unstable_chain.pop_head_unchecked();
             self.stable_chain.add_block(stabled_block);
         }
+
+        let stored_block = self.unstable_chain.try_add(block)?;
 
         Ok(stored_block)
     }
 
+    pub fn active_chain(&self) -> ActiveChain<B>
+    {
+        ActiveChain {
+            stabled: &self.stable_chain.blocks,
+            unstabled: self.unstable_chain.active_chain(),
+        }
+    }
+
+    /*
     /// Get iterator representing current best block chain.
     /// Oldest block comes first, latest block comes last.
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a B> + DoubleEndedIterator
@@ -116,9 +115,10 @@ impl<B: BlockData> BlockChainMut<B>
     {
         self.iter().rev().take(10)
     }
+    */
 }
 
-impl<B> ::std::fmt::Debug for BlockChainMut<B>
+impl<B, G> ::std::fmt::Debug for BlockChainMut<B, G>
 {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
     {
@@ -144,14 +144,59 @@ impl<B: BlockData> StableBlockChain<B>
         self.blocks.len()
     }
 
-    fn add_block(&mut self, stabled: StabledBlock<B>)
+    fn add_block(&mut self, block: B)
     {
-        self.blocks.push(stabled.0);
+        self.blocks.push(block);
     }
 }
 
-/// Just make sure that given Block is returned by `BlockTree::try_add_block`.
-pub struct StabledBlock<B>(pub B);
+pub struct ActiveChain<'a, B: 'a>
+{
+    stabled: &'a Vec<B>,
+    unstabled: blocktree::ActiveChain<'a, B>,
+}
+
+impl<'a, B: BlockData> ActiveChain<'a, B>
+{
+    pub fn len(&self) -> usize
+    {
+        self.stabled.len() + self.unstabled.len()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &B> + DoubleEndedIterator
+    {
+        let stabled_iter = self.stabled.iter();
+        let unstabled_iter = self.unstabled.iter();
+        stabled_iter.chain(unstabled_iter)
+    }
+
+    /// Get latest block
+    ///
+    /// The key of this function is `unwrap`; since there are always start block at least,
+    /// we can call `unwrap`.
+    pub fn latest_block(&self) -> &B
+    {
+        self.iter().rev().next().unwrap() // since there are always start block
+    }
+
+    /// Get block whose hash is exactly same with given hash.
+    pub fn get_block(&self, hash: Sha256dHash) -> Option<&B>
+    {
+        self.iter().find(move |b| b.bitcoin_hash() == hash)
+    }
+
+    /// Get locator blocks iterator.
+    ///
+    /// # Note
+    /// Current implementation is **VERY** **VERY** simple.
+    /// It should be improved in future.
+    /// Bitcoin core's implementation is here.
+    /// https://github.com/bitcoin/bitcoin/blob/master/src/chain.cpp#L23
+    pub fn locator_blocks(&self) -> impl Iterator<Item = &B>
+    {
+        self.iter().rev().take(10)
+    }
+}
 
 /// TODO: Should test re-org case
 #[cfg(test)]
