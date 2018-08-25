@@ -128,3 +128,16 @@ impl BlockGenerator for DefaultBlockGenerator
         block
     }
 }
+
+impl<B, G> BlockGenerator for G
+where
+    G: FnMut(RawBlockData) -> B,
+    B: BlockData,
+{
+    type BlockData = B;
+
+    fn generate_block(&mut self, block: RawBlockData) -> Self::BlockData
+    {
+        self(block)
+    }
+}
