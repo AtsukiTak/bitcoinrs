@@ -11,4 +11,5 @@ pub use self::block::{BlockData, BlockGenerator, DefaultBlockGenerator, FullBloc
 
 use bitcoin::blockdata::block::Block;
 
+#[derive(Debug)]
 pub struct NotFoundPrevBlock(pub Block);
