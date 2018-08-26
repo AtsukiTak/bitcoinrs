@@ -28,8 +28,8 @@ pub trait BlockGenerator
 #[derive(Debug)]
 pub struct RawBlockData
 {
-    block: Block,
-    height: usize,
+    pub block: Block,
+    pub height: usize,
     hash: Sha256dHash,
 }
 

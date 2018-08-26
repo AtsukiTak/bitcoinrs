@@ -13,7 +13,7 @@ use bitcoin::util::hash::Sha256dHash;
 
 use futures::Future;
 
-use libyabitcoin::{blockchain::{BlockChainMut, HeaderOnlyBlock, StoredBlock}, connection::Connection,
+use libyabitcoin::{blockchain::{BlockChainMut, HeaderOnlyBlockData, RawBlockData}, connection::Connection,
                    process::initial_block_download, socket::AsyncSocket};
 
 const DEMO_PEER: &str = "172.105.194.235:8333";
@@ -28,8 +28,10 @@ fn main()
         .and_then(|socket| Connection::initialize(socket, 0))
         .and_then(|conn| {
             info!("Connected");
-            let start_block = HeaderOnlyBlock::new(start_block());
-            let blockchain = BlockChainMut::with_start(start_block);
+            let start_block = HeaderOnlyBlockData::new(start_block().header, 0);
+            let blockchain = BlockChainMut::with_initial(vec![start_block], |raw: RawBlockData| {
+                HeaderOnlyBlockData::new(raw.block.header, raw.height)
+            });
             initial_block_download(conn, blockchain)
         });
 

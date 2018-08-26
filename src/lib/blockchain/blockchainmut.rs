@@ -3,7 +3,7 @@ use bitcoin::util::hash::Sha256dHash;
 
 use super::{blocktree, BlockData, BlockGenerator, BlockTree, NotFoundPrevBlock};
 
-const ENOUGH_CONFIRMATION: usize = 50;
+const ENOUGH_CONFIRMATION: usize = 6;
 
 /// A hybrid implementation of blockchain.
 /// The performance is higher than `BlockTree`.
@@ -37,16 +37,19 @@ where
 
     /// Try to add a new block.
     /// If success, reference to given block is returned.
-    pub fn try_add(&mut self, block: Block) -> Result<&B, NotFoundPrevBlock>
+    pub fn try_add(&mut self, block: Block) -> Result<(), NotFoundPrevBlock>
     {
+        println!("before try add unstable {}", self.unstable_chain.active_chain().len());
+        self.unstable_chain.try_add(block)?;
+        println!("after try add unstable {}", self.unstable_chain.active_chain().len());
+
         while self.unstable_chain.active_chain().len() > ENOUGH_CONFIRMATION {
             let stabled_block = self.unstable_chain.pop_head_unchecked();
             self.stable_chain.add_block(stabled_block);
         }
+        println!("after pop unstable {}", self.unstable_chain.active_chain().len());
 
-        let stored_block = self.unstable_chain.try_add(block)?;
-
-        Ok(stored_block)
+        Ok(())
     }
 
     pub fn active_chain(&self) -> ActiveChain<B>
@@ -143,7 +146,9 @@ impl<'a, B: BlockData> ActiveChain<'a, B>
 mod tests
 {
     use super::*;
+    use blockchain::{HeaderOnlyBlockData, RawBlockData};
     use bitcoin::blockdata::block::{Block, BlockHeader};
+    use bitcoin::network::serialize::BitcoinHash;
 
     fn dummy_block_header(prev_hash: Sha256dHash) -> BlockHeader
     {
@@ -163,13 +168,23 @@ mod tests
     {
         let start_block_header = dummy_block_header(Sha256dHash::default());
         let next_block_header = dummy_block_header(start_block_header.bitcoin_hash());
-        let mut blockchain = BlockChainMut::with_start(BlockData::new(start_block_header.clone()));
+        let start_block = HeaderOnlyBlockData::new(start_block_header, 0);
+        let next_block = Block {
+            header: next_block_header,
+            txdata: Vec::new(),
+        };
+        let mut blockchain = BlockChainMut::with_initial(vec![start_block], |raw: RawBlockData| {
+            HeaderOnlyBlockData::new(raw.block.header, raw.height)
+        });
 
-        blockchain.try_add(BlockData::new(next_block_header.clone())).unwrap(); // Should success.
+        assert_eq!(blockchain.active_chain().len(), 1);
 
-        assert_eq!(blockchain.len(), 2);
+        blockchain.try_add(next_block).unwrap(); // Should success.
 
-        let headers: Vec<_> = blockchain.iter().map(|b| b.header().clone()).collect();
+        assert_eq!(blockchain.active_chain().len(), 2);
+
+        let active_chain = blockchain.active_chain();
+        let headers: Vec<_> = active_chain.iter().map(|b| b.header().clone()).collect();
         assert_eq!(headers, vec![start_block_header, next_block_header]);
     }
 
@@ -185,17 +200,49 @@ mod tests
         let block7 = dummy_block_header(block6.bitcoin_hash());
         let block8 = dummy_block_header(block7.bitcoin_hash());
 
-        let mut blockchain = BlockChainMut::with_start(BlockData::new(block1));
+        let block1_data = HeaderOnlyBlockData::new(block1, 0);
+        let block2 = Block {
+            header: block2,
+            txdata: Vec::new(),
+        };
+        let block3 = Block {
+            header: block3,
+            txdata: Vec::new(),
+        };
+        let block4 = Block {
+            header: block4,
+            txdata: Vec::new(),
+        };
+        let block5 = Block {
+            header: block5,
+            txdata: Vec::new(),
+        };
+        let block6 = Block {
+            header: block6,
+            txdata: Vec::new(),
+        };
+        let block7 = Block {
+            header: block7,
+            txdata: Vec::new(),
+        };
+        let block8 = Block {
+            header: block8,
+            txdata: Vec::new(),
+        };
 
-        blockchain.try_add(BlockData::new(block2)).unwrap();
-        blockchain.try_add(BlockData::new(block3)).unwrap();
-        blockchain.try_add(BlockData::new(block4)).unwrap();
-        blockchain.try_add(BlockData::new(block5)).unwrap();
-        blockchain.try_add(BlockData::new(block6)).unwrap();
-        blockchain.try_add(BlockData::new(block7)).unwrap();
-        blockchain.try_add(BlockData::new(block8)).unwrap();
+        let mut blockchain = BlockChainMut::with_initial(vec![block1_data], |raw: RawBlockData| {
+            HeaderOnlyBlockData::new(raw.block.header, raw.height)
+        });
 
-        assert_eq!(blockchain.stable_chain.len(), 1);
-        assert_eq!(blockchain.unstable_chain.len(), 7);
+        blockchain.try_add(block2).unwrap();
+        blockchain.try_add(block3).unwrap();
+        blockchain.try_add(block4).unwrap();
+        blockchain.try_add(block5).unwrap();
+        blockchain.try_add(block6).unwrap();
+        blockchain.try_add(block7).unwrap();
+        blockchain.try_add(block8).unwrap();
+
+        assert_eq!(blockchain.stable_chain.blocks.len(), 2);
+        assert_eq!(blockchain.unstable_chain.active_chain().len(), 6);
     }
 }
