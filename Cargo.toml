@@ -4,7 +4,7 @@ version = "0.0.0"
 authors = ["AtsukiTak <takatomgoo@gmail.com>"]
 
 [dependencies]
-bitcoin = "0.13"
+bitcoin = "0.14"
 
 futures = "0.1"
 

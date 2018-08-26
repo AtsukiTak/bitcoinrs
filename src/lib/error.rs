@@ -4,7 +4,8 @@ error_chain! {
     }
 
     foreign_links {
-        Bitcoin(::bitcoin::util::Error);
+        BitcoinNetwork(::bitcoin::network::Error);
+        BitcoinUtil(::bitcoin::util::Error);
         Io(::std::io::Error);
     }
 
