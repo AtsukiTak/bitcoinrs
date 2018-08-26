@@ -3,7 +3,7 @@ use bitcoin::util::hash::Sha256dHash;
 
 use super::{blocktree, BlockData, BlockGenerator, BlockTree, NotFoundPrevBlock};
 
-const ENOUGH_CONFIRMATION: usize = 6;
+const DEFAULT_ENOUGH_CONF: usize = 100;
 
 /// A hybrid implementation of blockchain.
 /// The performance is higher than `BlockTree`.
@@ -13,6 +13,7 @@ pub struct BlockChainMut<B, G>
 {
     stable_chain: StableBlockChain<B>,
     unstable_chain: BlockTree<B, G>,
+    enough_confirmation: usize,
 }
 
 impl<B, G> BlockChainMut<B, G>
@@ -32,6 +33,7 @@ where
         BlockChainMut {
             stable_chain: StableBlockChain::new(),
             unstable_chain: BlockTree::with_initial(blocks, generator),
+            enough_confirmation: DEFAULT_ENOUGH_CONF,
         }
     }
 
@@ -43,7 +45,7 @@ where
         self.unstable_chain.try_add(block)?;
         println!("after try add unstable {}", self.unstable_chain.active_chain().len());
 
-        while self.unstable_chain.active_chain().len() > ENOUGH_CONFIRMATION {
+        while self.unstable_chain.active_chain().len() > self.enough_confirmation {
             let stabled_block = self.unstable_chain.pop_head_unchecked();
             self.stable_chain.add_block(stabled_block);
         }
