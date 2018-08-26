@@ -1,5 +1,5 @@
-use bitcoin::blockdata::block::{Block, BlockHeader};
-use bitcoin::network::serialize::BitcoinHash;
+use bitcoin::blockdata::{block::{Block, BlockHeader}, constants::genesis_block};
+use bitcoin::network::{constants::Network, serialize::BitcoinHash};
 use bitcoin::util::hash::Sha256dHash;
 
 /*  Trait definition */
@@ -42,6 +42,11 @@ impl RawBlockData
             block,
             height,
         }
+    }
+
+    pub fn genesis(network: Network) -> RawBlockData
+    {
+        RawBlockData::new(genesis_block(network), 0)
     }
 }
 
@@ -91,6 +96,11 @@ impl HeaderOnlyBlockData
             height,
             header,
         }
+    }
+
+    pub fn genesis(network: Network) -> HeaderOnlyBlockData
+    {
+        HeaderOnlyBlockData::new(genesis_block(network).header, 0)
     }
 }
 
