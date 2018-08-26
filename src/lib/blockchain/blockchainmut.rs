@@ -45,15 +45,12 @@ where
     /// Try to add a new block.
     pub fn try_add(&mut self, block: Block) -> Result<(), NotFoundPrevBlock>
     {
-        println!("before try add unstable {}", self.unstable_chain.active_chain().len());
         self.unstable_chain.try_add(block)?;
-        println!("after try add unstable {}", self.unstable_chain.active_chain().len());
 
         while self.unstable_chain.active_chain().len() > self.enough_confirmation {
             let stabled_block = self.unstable_chain.pop_head_unchecked();
             self.stable_chain.add_block(stabled_block);
         }
-        println!("after pop unstable {}", self.unstable_chain.active_chain().len());
 
         Ok(())
     }
