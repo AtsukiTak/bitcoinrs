@@ -8,12 +8,6 @@ use super::{BlockData, BlockGenerator, NotFoundPrevBlock, RawBlockData};
 /// A honest implementation of blockchain.
 pub struct BlockTree<B, G>
 {
-    // Head node.
-    head: NonNull<Node<B>>,
-
-    // Last node of longest chain
-    tail: NonNull<Node<B>>,
-
     // Nodes of current active chain
     active_nodes: Vec<NonNull<Node<B>>>,
 
@@ -63,19 +57,18 @@ where
         }
 
         BlockTree {
-            head: *nodes.first().unwrap(),
-            tail: *nodes.last().unwrap(),
             active_nodes: nodes,
             block_generator: generator,
         }
     }
 
-    pub fn try_add(&mut self, block: Block) -> Result<&B, NotFoundPrevBlock>
+    pub fn try_add(&mut self, block: Block) -> Result<(), NotFoundPrevBlock>
     {
         /* Defines some useful function */
 
         // Returns last common `Node` between `active_chain` and `node_ptr`'s branch.
-        fn find_fork<B: BlockData>(active_chain: ActiveChain<B>, node_ptr: NonNull<Node<B>>) -> NonNull<Node<B>>
+        fn find_last_common<B: BlockData>(active_chain: ActiveChain<B>, node_ptr: NonNull<Node<B>>)
+            -> NonNull<Node<B>>
         {
             let node = unsafe { node_ptr.as_ref() };
             if active_chain.contains(&node.block) {
@@ -83,16 +76,17 @@ where
             }
             match node.prev {
                 None => unreachable!(), // because independent branch never exist.
-                Some(prev) => find_fork(active_chain, prev),
+                Some(prev) => find_last_common(active_chain, prev),
             }
         }
 
+        // Rewinded `active_chain` contains a node whose height is `rewind_height`.
         // Length of `active_chain` must be long enough.
         fn rewind_active_chain<B: BlockData>(active_chain: &mut Vec<NonNull<Node<B>>>, rewind_height: usize)
         {
             unsafe {
                 let start_height = active_chain[0].as_ref().block.height();
-                let rewind_idx = rewind_height - start_height;
+                let rewind_idx = rewind_height - start_height + 1;
                 active_chain.set_len(rewind_idx);
             }
         }
@@ -127,16 +121,16 @@ where
         let new_node = Node::append_block(prev_node, block_data);
 
         // If new_node is a new tip, replace
-        let tail_block_height = unsafe { self.tail.as_ref().block.height() };
+        let tail_block_height = unsafe { self.active_nodes.last().unwrap().as_ref().block.height() };
         if tail_block_height < new_block_height {
             // Rewinds current active chain
-            let last_common_node = find_fork(self.active_chain(), new_node);
+            let last_common_node = find_last_common(self.active_chain(), new_node);
             let rewind_height = unsafe { last_common_node.as_ref().block.height() };
             rewind_active_chain(&mut self.active_nodes, rewind_height);
             append_nodes(&mut self.active_nodes, new_node);
         }
 
-        Ok(unsafe { &(*new_node.as_ptr()).block })
+        Ok(())
     }
 
     /// Find a block whose bitcoin_hash is equal to given hash
@@ -160,7 +154,7 @@ where
             None
         }
 
-        inner(self.head, hash)
+        inner(self.active_nodes[0], hash)
     }
 
     pub fn active_chain(&self) -> ActiveChain<B>
@@ -175,9 +169,8 @@ where
     /// if the number of block contained is 1.
     pub fn pop_head_unchecked(&mut self) -> B
     {
-        let poped_head = self.head;
-        let mut next_head = self.active_nodes[1]; // panic if length is 1.
-        self.active_nodes.remove(0);
+        let poped_head = self.active_nodes.remove(0);
+        let mut next_head = self.active_nodes[0]; // panic if length is 1.
 
         // Drop nodes which will be dangling.
         for may_drop_node in unsafe { poped_head.as_ref().nexts.iter() } {
@@ -198,7 +191,7 @@ impl<B, G> Drop for BlockTree<B, G>
 {
     fn drop(&mut self)
     {
-        unsafe { drop_with_sub_node(self.head) };
+        unsafe { drop_with_sub_node(self.active_nodes[0]) };
     }
 }
 
@@ -285,6 +278,7 @@ mod tests
     use super::*;
     use blockchain::HeaderOnlyBlockData;
     use bitcoin::blockdata::block::{Block, BlockHeader};
+    use bitcoin::network::serialize::BitcoinHash;
 
     fn dummy_block_header(prev_hash: Sha256dHash) -> BlockHeader
     {
@@ -309,7 +303,9 @@ mod tests
             header: next_block_header,
             txdata: Vec::new(),
         };
-        let mut blocktree = BlockTree::with_initial(vec![start_block]);
+        let mut blocktree = BlockTree::with_initial(vec![start_block], |raw: RawBlockData| {
+            HeaderOnlyBlockData::new(raw.block.header, raw.height)
+        });
 
         assert_eq!(blocktree.active_chain().len(), 1);
 
