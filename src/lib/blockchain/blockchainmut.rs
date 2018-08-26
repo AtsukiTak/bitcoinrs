@@ -37,8 +37,12 @@ where
         }
     }
 
+    /// Sets the `enough_confirmation` field.
+    pub fn set_enough_confirmation(&mut self, conf: usize) {
+        self.enough_confirmation = conf;
+    }
+
     /// Try to add a new block.
-    /// If success, reference to given block is returned.
     pub fn try_add(&mut self, block: Block) -> Result<(), NotFoundPrevBlock>
     {
         println!("before try add unstable {}", self.unstable_chain.active_chain().len());
@@ -235,6 +239,7 @@ mod tests
         let mut blockchain = BlockChainMut::with_initial(vec![block1_data], |raw: RawBlockData| {
             HeaderOnlyBlockData::new(raw.block.header, raw.height)
         });
+        blockchain.set_enough_confirmation(7);
 
         blockchain.try_add(block2).unwrap();
         blockchain.try_add(block3).unwrap();
@@ -244,7 +249,7 @@ mod tests
         blockchain.try_add(block7).unwrap();
         blockchain.try_add(block8).unwrap();
 
-        assert_eq!(blockchain.stable_chain.blocks.len(), 2);
-        assert_eq!(blockchain.unstable_chain.active_chain().len(), 6);
+        assert_eq!(blockchain.stable_chain.blocks.len(), 1);
+        assert_eq!(blockchain.unstable_chain.active_chain().len(), 7);
     }
 }
