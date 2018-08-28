@@ -280,7 +280,6 @@ impl<'a> ActiveChain<'a>
 mod tests
 {
     use super::*;
-    use blockchain::HeaderOnlyBlockData;
     use bitcoin::blockdata::block::{Block, BlockHeader};
     use bitcoin::network::serialize::BitcoinHash;
 
@@ -302,26 +301,17 @@ mod tests
     {
         let start_block_header = dummy_block_header(Sha256dHash::default());
         let next_block_header = dummy_block_header(start_block_header.bitcoin_hash());
-        let start_block = HeaderOnlyBlockData::new(start_block_header, 0);
-        let next_block = Block {
-            header: next_block_header,
-            txdata: Vec::new(),
-        };
-        let mut blocktree = BlockTree::with_initial(vec![start_block], |raw: RawBlockData| {
-            HeaderOnlyBlockData::new(raw.block.header, raw.height)
-        });
+        let start_block = BlockData::new(start_block_header, 0);
+        let mut blocktree = BlockTree::with_start(start_block);
 
         assert_eq!(blocktree.active_chain().len(), 1);
 
-        blocktree.try_add(next_block).unwrap(); // Should success.
+        blocktree.try_add(next_block_header).unwrap(); // Should success.
 
         assert_eq!(blocktree.active_chain().len(), 2);
 
-        let headers: Vec<_> = blocktree
-            .active_nodes
-            .iter()
-            .map(|node| unsafe { node.as_ref().block.header().clone() })
-            .collect();
+        let active_chain = blocktree.active_chain();
+        let headers: Vec<_> = active_chain.iter().map(|block| block.header).collect();
         assert_eq!(headers, vec![start_block_header, next_block_header]);
     }
 }

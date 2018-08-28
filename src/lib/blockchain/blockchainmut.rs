@@ -22,6 +22,15 @@ pub struct BlockChainMut
 
 impl BlockChainMut
 {
+    pub fn with_start(block: BlockData) -> BlockChainMut
+    {
+        BlockChainMut {
+            stable_chain: StableBlockChain::new(),
+            unstable_chain: BlockTree::with_start(block),
+            enough_confirmation: DEFAULT_ENOUGH_CONF,
+        }
+    }
+
     /// Creaet a new `BlockChainMut` struct with start block.
     /// Note that given start block **MUST** be stable one.
     ///
@@ -151,7 +160,6 @@ impl<'a> ActiveChain<'a>
 mod tests
 {
     use super::*;
-    use blockchain::{HeaderOnlyBlockData, RawBlockData};
     use bitcoin::blockdata::block::{Block, BlockHeader};
     use bitcoin::network::serialize::BitcoinHash;
 
@@ -173,23 +181,17 @@ mod tests
     {
         let start_block_header = dummy_block_header(Sha256dHash::default());
         let next_block_header = dummy_block_header(start_block_header.bitcoin_hash());
-        let start_block = HeaderOnlyBlockData::new(start_block_header, 0);
-        let next_block = Block {
-            header: next_block_header,
-            txdata: Vec::new(),
-        };
-        let mut blockchain = BlockChainMut::with_initial(vec![start_block], |raw: RawBlockData| {
-            HeaderOnlyBlockData::new(raw.block.header, raw.height)
-        });
+        let start_block = BlockData::new(start_block_header, 0);
+        let mut blockchain = BlockChainMut::with_start(start_block);
 
         assert_eq!(blockchain.active_chain().len(), 1);
 
-        blockchain.try_add(next_block).unwrap(); // Should success.
+        blockchain.try_add(next_block_header).unwrap(); // Should success.
 
         assert_eq!(blockchain.active_chain().len(), 2);
 
         let active_chain = blockchain.active_chain();
-        let headers: Vec<_> = active_chain.iter().map(|b| b.header().clone()).collect();
+        let headers: Vec<_> = active_chain.iter().map(|b| b.header).collect();
         assert_eq!(headers, vec![start_block_header, next_block_header]);
     }
 
@@ -205,39 +207,9 @@ mod tests
         let block7 = dummy_block_header(block6.bitcoin_hash());
         let block8 = dummy_block_header(block7.bitcoin_hash());
 
-        let block1_data = HeaderOnlyBlockData::new(block1, 0);
-        let block2 = Block {
-            header: block2,
-            txdata: Vec::new(),
-        };
-        let block3 = Block {
-            header: block3,
-            txdata: Vec::new(),
-        };
-        let block4 = Block {
-            header: block4,
-            txdata: Vec::new(),
-        };
-        let block5 = Block {
-            header: block5,
-            txdata: Vec::new(),
-        };
-        let block6 = Block {
-            header: block6,
-            txdata: Vec::new(),
-        };
-        let block7 = Block {
-            header: block7,
-            txdata: Vec::new(),
-        };
-        let block8 = Block {
-            header: block8,
-            txdata: Vec::new(),
-        };
+        let block1_data = BlockData::new(block1, 0);
 
-        let mut blockchain = BlockChainMut::with_initial(vec![block1_data], |raw: RawBlockData| {
-            HeaderOnlyBlockData::new(raw.block.header, raw.height)
-        });
+        let mut blockchain = BlockChainMut::with_start(block1_data);
         blockchain.set_enough_confirmation(7);
 
         blockchain.try_add(block2).unwrap();
