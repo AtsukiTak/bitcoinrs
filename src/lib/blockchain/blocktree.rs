@@ -235,7 +235,10 @@ impl<'a> ActiveChain<'a>
 
     pub fn contains(&self, block: &BlockData) -> bool
     {
-        self.get_block(block.height()).is_some()
+        match self.get_block(block.height) {
+            None => false,
+            Some(b) => b.bitcoin_hash() == block.bitcoin_hash(),
+        }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &BlockData> + DoubleEndedIterator
