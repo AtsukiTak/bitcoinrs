@@ -104,12 +104,12 @@ pub struct ActiveChain<'a>
 
 impl<'a> ActiveChain<'a>
 {
-    pub fn len(&self) -> usize
+    pub fn len(&'a self) -> usize
     {
         self.stabled.len() + self.unstabled.len()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &BlockData> + DoubleEndedIterator
+    pub fn iter(&'a self) -> impl Iterator<Item = &'a BlockData> + DoubleEndedIterator
     {
         let stabled_iter = self.stabled.iter();
         let unstabled_iter = self.unstabled.iter();
@@ -120,27 +120,27 @@ impl<'a> ActiveChain<'a>
     ///
     /// The key of this function is `unwrap`; since there are always start block at least,
     /// we can call `unwrap`.
-    pub fn latest_block(&self) -> &BlockData
+    pub fn latest_block(&'a self) -> &'a BlockData
     {
         self.iter().rev().next().unwrap() // since there are always start block
     }
 
     /// Get block whose hash is exactly same with given hash.
-    pub fn get_block(&self, hash: Sha256dHash) -> Option<&BlockData>
+    pub fn get_block(&'a self, hash: Sha256dHash) -> Option<&'a BlockData>
     {
         self.iter().find(move |b| b.bitcoin_hash() == hash)
     }
 
-    /// Get locator blocks iterator.
+    /// Get locator block's hash iterator.
     ///
     /// # Note
     /// Current implementation is **VERY** **VERY** simple.
     /// It should be improved in future.
     /// Bitcoin core's implementation is here.
     /// https://github.com/bitcoin/bitcoin/blob/master/src/chain.cpp#L23
-    pub fn locator_blocks(&self) -> impl Iterator<Item = &BlockData>
+    pub fn locator_hashes(&'a self) -> impl Iterator<Item = Sha256dHash> + 'a
     {
-        self.iter().rev().take(10)
+        self.iter().rev().take(10).map(|b| b.bitcoin_hash())
     }
 }
 

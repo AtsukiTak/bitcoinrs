@@ -22,8 +22,8 @@ pub fn initial_block_download(
     let locator_hashes: Vec<Sha256dHash> = {
         let mut vec = Vec::new();
         let active_chain = block_chain.active_chain();
-        for block in active_chain.locator_blocks() {
-            vec.push(block.bitcoin_hash());
+        for hash in active_chain.locator_hashes() {
+            vec.push(hash);
         }
         vec
     };
