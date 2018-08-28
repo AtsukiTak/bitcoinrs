@@ -142,6 +142,15 @@ impl<'a> ActiveChain<'a>
     {
         self.iter().rev().take(10).map(|b| b.bitcoin_hash())
     }
+
+    pub fn locator_hashes_vec(&'a self) -> Vec<Sha256dHash>
+    {
+        let mut vec = Vec::with_capacity(10);
+        for hash in self.locator_hashes() {
+            vec.push(hash);
+        }
+        vec
+    }
 }
 
 /// TODO: Should test re-org case

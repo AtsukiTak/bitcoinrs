@@ -19,15 +19,7 @@ pub fn initial_block_download(
     block_chain: BlockChainMut,
 ) -> impl Future<Item = (Connection, BlockChainMut), Error = Error>
 {
-    let locator_hashes: Vec<Sha256dHash> = {
-        let mut vec = Vec::new();
-        let active_chain = block_chain.active_chain();
-        for hash in active_chain.locator_hashes() {
-            vec.push(hash);
-        }
-        vec
-    };
-    download_all_headers(conn, locator_hashes)
+    download_all_headers(conn, block_chain.active_chain().locator_hashes_vec())
         .and_then(move |(conn, headers)| download_all_blocks(conn, headers, block_chain))
 }
 
