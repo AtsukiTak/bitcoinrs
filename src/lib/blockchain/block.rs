@@ -2,7 +2,7 @@ use bitcoin::blockdata::{block::BlockHeader, constants::genesis_block};
 use bitcoin::network::{constants::Network, serialize::BitcoinHash};
 use bitcoin::util::hash::Sha256dHash;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockData
 {
     pub header: BlockHeader,
