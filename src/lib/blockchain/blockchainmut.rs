@@ -1,5 +1,5 @@
 use bitcoin::blockdata::block::BlockHeader;
-use bitcoin::network::serialize::BitcoinHash;
+use bitcoin::network::{constants::Network, serialize::BitcoinHash};
 use bitcoin::util::hash::Sha256dHash;
 
 use super::{blocktree, BlockData, BlockTree, NotFoundPrevBlock};
@@ -22,27 +22,16 @@ pub struct BlockChainMut
 
 impl BlockChainMut
 {
+    pub fn new(network: Network) -> BlockChainMut
+    {
+        BlockChainMut::with_start(BlockData::genesis(network))
+    }
+
     pub fn with_start(block: BlockData) -> BlockChainMut
     {
         BlockChainMut {
             stable_chain: StableBlockChain::new(),
             unstable_chain: BlockTree::with_start(block),
-            enough_confirmation: DEFAULT_ENOUGH_CONF,
-        }
-    }
-
-    /// Creaet a new `BlockChainMut` struct with start block.
-    /// Note that given start block **MUST** be stable one.
-    ///
-    /// # Panic
-    /// if a length of `blocks` is 0.
-    pub fn with_initial(blocks: Vec<BlockData>) -> BlockChainMut
-    {
-        assert!(blocks.len() > 0);
-
-        BlockChainMut {
-            stable_chain: StableBlockChain::new(),
-            unstable_chain: BlockTree::with_initial(blocks),
             enough_confirmation: DEFAULT_ENOUGH_CONF,
         }
     }
@@ -160,8 +149,6 @@ impl<'a> ActiveChain<'a>
 mod tests
 {
     use super::*;
-    use bitcoin::blockdata::block::{Block, BlockHeader};
-    use bitcoin::network::serialize::BitcoinHash;
 
     fn dummy_block_header(prev_hash: Sha256dHash) -> BlockHeader
     {

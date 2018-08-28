@@ -36,37 +36,6 @@ impl BlockTree
         }
     }
 
-    /// # Note
-    /// Does not check blockchain validity
-    ///
-    /// # Panic
-    /// if a length of `blocks` is 0.
-    pub fn with_initial(blocks: Vec<BlockData>) -> BlockTree
-    {
-        assert!(blocks.len() > 0);
-
-        let mut nodes: Vec<NonNull<Node>> = blocks.into_iter().map(Node::new).collect();
-
-        {
-            // updaet `prev` field
-            let nodes_cloned = nodes.clone();
-            let nodes_skip_first = nodes.iter_mut().skip(1);
-            for (node, prev) in nodes_skip_first.zip(nodes_cloned) {
-                unsafe { node.as_mut().prev = Some(prev) };
-            }
-        }
-
-        {
-            // update `nexts` field
-            let nodes_skip_first = nodes.clone().into_iter().skip(1);
-            for (node, next) in nodes.iter_mut().zip(nodes_skip_first) {
-                unsafe { node.as_mut().nexts.push(next) };
-            }
-        }
-
-        BlockTree { active_nodes: nodes }
-    }
-
     pub fn try_add(&mut self, block_header: BlockHeader) -> Result<(), NotFoundPrevBlock>
     {
         /* Defines some useful function */
@@ -280,8 +249,6 @@ impl<'a> ActiveChain<'a>
 mod tests
 {
     use super::*;
-    use bitcoin::blockdata::block::{Block, BlockHeader};
-    use bitcoin::network::serialize::BitcoinHash;
 
     fn dummy_block_header(prev_hash: Sha256dHash) -> BlockHeader
     {
