@@ -5,7 +5,7 @@ mod data_manager;
 
 pub use self::blockchain::BlockChain;
 pub use self::blocktree::BlockTree;
-pub use self::block::BlockData;
+pub use self::block::{BlockData, BlockDataLike};
 pub use self::data_manager::{BlockAssociatedData, BlockAssociatedDataManager};
 
 use bitcoin::blockdata::block::BlockHeader;

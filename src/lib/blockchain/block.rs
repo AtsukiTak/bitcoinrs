@@ -44,3 +44,22 @@ impl BitcoinHash for BlockData
         self.hash
     }
 }
+
+pub trait BlockDataLike: BitcoinHash
+{
+    fn header(&self) -> &BlockHeader;
+    fn height(&self) -> usize;
+}
+
+impl BlockDataLike for BlockData
+{
+    fn header(&self) -> &BlockHeader
+    {
+        self.header()
+    }
+
+    fn height(&self) -> usize
+    {
+        self.height()
+    }
+}

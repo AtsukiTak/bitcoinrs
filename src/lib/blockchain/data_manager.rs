@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use bitcoin::network::serialize::BitcoinHash;
 
-use blockchain::{BlockChain, BlockData};
+use blockchain::{BlockChain, BlockDataLike, BlockData};
 
 /// A manager who handles some datas associated with `BlockData`.
 /// Internal datas are consecutive.
@@ -10,9 +10,8 @@ pub struct BlockAssociatedDataManager<T>
     datas: VecDeque<T>,
 }
 
-pub trait BlockAssociatedData
+pub trait BlockAssociatedData: BlockDataLike
 {
-    fn block(&self) -> &BlockData;
 }
 
 impl<T: BlockAssociatedData> BlockAssociatedDataManager<T>
@@ -29,13 +28,13 @@ impl<T: BlockAssociatedData> BlockAssociatedDataManager<T>
 
     pub fn minimum_height(&self) -> usize
     {
-        self.datas.front().map(|b| b.block().height()).unwrap_or(0)
+        self.datas.front().map(|b| b.height()).unwrap_or(0)
     }
 
     pub fn get_data(&self, block: &BlockData) -> Option<&T>
     {
         let possible_data = self.get_data_by_height(block.height())?;
-        if possible_data.block().bitcoin_hash() == block.bitcoin_hash() {
+        if possible_data.bitcoin_hash() == block.bitcoin_hash() {
             Some(possible_data)
         } else {
             None
@@ -44,7 +43,7 @@ impl<T: BlockAssociatedData> BlockAssociatedDataManager<T>
 
     pub fn get_data_by_height(&self, height: usize) -> Option<&T>
     {
-        let start_height = self.datas.front()?.block().height();
+        let start_height = self.datas.front()?.height();
 
         if height < start_height {
             return None;
@@ -122,8 +121,8 @@ impl<T: BlockAssociatedData> BlockAssociatedDataManager<T>
         }
 
         let current_minimum_height = self.minimum_height();
-        let current_maximum_height = self.datas.back().unwrap().block().height();
-        let new_minimum_height = datas[0].block().height();
+        let current_maximum_height = self.datas.back().unwrap().height();
+        let new_minimum_height = datas[0].height();
         assert!(new_minimum_height <= current_maximum_height + 1);
         self.datas.truncate(new_minimum_height - current_minimum_height);
 
