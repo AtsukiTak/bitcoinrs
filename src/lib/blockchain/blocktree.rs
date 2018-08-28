@@ -1,7 +1,7 @@
 use bitcoin::util::hash::Sha256dHash;
 use bitcoin::blockdata::block::BlockHeader;
 use bitcoin::network::{constants::Network, serialize::BitcoinHash};
-use std::ptr::NonNull;
+use std::{collections::VecDeque, ptr::NonNull};
 
 use super::{BlockData, NotFoundPrevBlock};
 
@@ -10,7 +10,7 @@ use super::{BlockData, NotFoundPrevBlock};
 pub struct BlockTree
 {
     // Nodes of current active chain
-    active_nodes: Vec<NonNull<Node>>,
+    active_nodes: VecDeque<NonNull<Node>>,
 }
 
 #[derive(Debug)]
@@ -31,9 +31,9 @@ impl BlockTree
     pub fn with_start(block_data: BlockData) -> BlockTree
     {
         let node = Node::new(block_data);
-        BlockTree {
-            active_nodes: vec![node],
-        }
+        let mut vec = VecDeque::new();
+        vec.push_back(node);
+        BlockTree { active_nodes: vec }
     }
 
     pub fn try_add(&mut self, block_header: BlockHeader) -> Result<(), NotFoundPrevBlock>
@@ -55,24 +55,24 @@ impl BlockTree
 
         // Rewinded `active_chain` contains a node whose height is `rewind_height`.
         // Length of `active_chain` must be long enough.
-        fn rewind_active_chain(active_chain: &mut Vec<NonNull<Node>>, rewind_height: usize)
+        fn rewind_active_chain(active_chain: &mut VecDeque<NonNull<Node>>, rewind_height: usize)
         {
             unsafe {
                 let start_height = active_chain[0].as_ref().block.height();
                 let rewind_idx = rewind_height - start_height + 1;
-                active_chain.set_len(rewind_idx);
+                active_chain.truncate(rewind_idx);
             }
         }
 
-        fn append_nodes(active_chain: &mut Vec<NonNull<Node>>, node_ptr: NonNull<Node>)
+        fn append_nodes(active_chain: &mut VecDeque<NonNull<Node>>, node_ptr: NonNull<Node>)
         {
             unsafe {
                 let node = node_ptr.as_ref();
                 let prev_node = node.prev.unwrap();
-                if prev_node != *active_chain.last().unwrap() {
+                if prev_node != *active_chain.back().unwrap() {
                     append_nodes(active_chain, prev_node);
                 }
-                active_chain.push(node_ptr);
+                active_chain.push_back(node_ptr);
             }
         }
 
@@ -93,7 +93,7 @@ impl BlockTree
         let new_node = Node::append_block(prev_node, new_block_data);
 
         // If new_node is a new tip, replace
-        let tail_block_height = unsafe { self.active_nodes.last().unwrap().as_ref().block.height() };
+        let tail_block_height = unsafe { self.active_nodes.back().unwrap().as_ref().block.height() };
         if tail_block_height < new_block_height {
             // Rewinds current active chain
             let last_common_node = find_last_common(self.active_chain(), new_node);
@@ -142,7 +142,7 @@ impl BlockTree
     /// if only one block is contained.
     pub fn pop_head_unchecked(&mut self) -> BlockData
     {
-        let poped_head = self.active_nodes.remove(0);
+        let poped_head = self.active_nodes.pop_front().unwrap();
         let mut next_head = self.active_nodes[0]; // panic if length is 1.
 
         // Drop nodes which will be dangling.
@@ -212,7 +212,7 @@ unsafe fn drop_with_sub_node(node_ptr: NonNull<Node>)
 pub struct ActiveChain<'a>
 {
     // TODO : Need non-alocation way
-    nodes: &'a Vec<NonNull<Node>>,
+    nodes: &'a VecDeque<NonNull<Node>>,
 }
 
 impl<'a> ActiveChain<'a>
