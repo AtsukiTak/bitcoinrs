@@ -7,16 +7,15 @@ use blockchain::{BlockChain, BlockData};
 /// Internal datas are consecutive.
 pub struct BlockAssociatedDataManager<T>
 {
-    datas: VecDeque<BlockAssociatedData<T>>,
+    datas: VecDeque<T>,
 }
 
-pub struct BlockAssociatedData<T>
+pub trait BlockAssociatedData
 {
-    block: BlockData,
-    data: T,
+    fn block(&self) -> &BlockData;
 }
 
-impl<T> BlockAssociatedDataManager<T>
+impl<T: BlockAssociatedData> BlockAssociatedDataManager<T>
 {
     pub fn new() -> BlockAssociatedDataManager<T>
     {
@@ -30,22 +29,22 @@ impl<T> BlockAssociatedDataManager<T>
 
     pub fn minimum_height(&self) -> usize
     {
-        self.datas.front().map(|b| b.block.height()).unwrap_or(0)
+        self.datas.front().map(|b| b.block().height()).unwrap_or(0)
     }
 
     pub fn get_data(&self, block: &BlockData) -> Option<&T>
     {
         let possible_data = self.get_data_by_height(block.height())?;
-        if possible_data.block.bitcoin_hash() == block.bitcoin_hash() {
-            Some(&possible_data.data)
+        if possible_data.block().bitcoin_hash() == block.bitcoin_hash() {
+            Some(possible_data)
         } else {
             None
         }
     }
 
-    pub fn get_data_by_height(&self, height: usize) -> Option<&BlockAssociatedData<T>>
+    pub fn get_data_by_height(&self, height: usize) -> Option<&T>
     {
-        let start_height = self.datas.front()?.block.height();
+        let start_height = self.datas.front()?.block().height();
 
         if height < start_height {
             return None;
@@ -113,7 +112,7 @@ impl<T> BlockAssociatedDataManager<T>
     ///     ===== !!!!!!! Panic !!!!!!! =====
     ///
     /// ```
-    pub fn update(&mut self, datas: Vec<BlockAssociatedData<T>>)
+    pub fn update(&mut self, datas: Vec<T>)
     {
         assert!(!datas.is_empty());
 
@@ -123,24 +122,16 @@ impl<T> BlockAssociatedDataManager<T>
         }
 
         let current_minimum_height = self.minimum_height();
-        let current_maximum_height = self.datas.back().unwrap().block.height();
-        let new_minimum_height = datas[0].block.height();
+        let current_maximum_height = self.datas.back().unwrap().block().height();
+        let new_minimum_height = datas[0].block().height();
         assert!(new_minimum_height <= current_maximum_height + 1);
         self.datas.truncate(new_minimum_height - current_minimum_height);
 
         self.datas.append(&mut datas.into());
     }
 
-    pub fn pop(&mut self) -> Option<BlockAssociatedData<T>>
+    pub fn pop(&mut self) -> Option<T>
     {
         self.datas.pop_front()
-    }
-}
-
-impl<T> BlockAssociatedData<T>
-{
-    pub fn new(block: BlockData, data: T) -> BlockAssociatedData<T>
-    {
-        BlockAssociatedData { block, data }
     }
 }
