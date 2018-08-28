@@ -130,6 +130,11 @@ impl<T> BlockAssociatedDataManager<T>
 
         self.datas.append(&mut datas.into());
     }
+
+    pub fn pop(&mut self) -> Option<BlockAssociatedData<T>>
+    {
+        self.datas.pop_front()
+    }
 }
 
 impl<T> BlockAssociatedData<T>
