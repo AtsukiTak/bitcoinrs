@@ -1,43 +1,51 @@
 use bitcoin::util::hash::Sha256dHash;
-use bitcoin::blockdata::block::Block;
+use bitcoin::blockdata::block::BlockHeader;
+use bitcoin::network::{constants::Network, serialize::BitcoinHash};
 use std::ptr::NonNull;
 
-use super::{BlockData, BlockGenerator, NotFoundPrevBlock, RawBlockData};
+use super::{BlockData, NotFoundPrevBlock};
 
 
 /// A honest implementation of blockchain.
-pub struct BlockTree<B, G>
+pub struct BlockTree
 {
     // Nodes of current active chain
-    active_nodes: Vec<NonNull<Node<B>>>,
-
-    // Generator which is used when a new block is added
-    block_generator: G,
+    active_nodes: Vec<NonNull<Node>>,
 }
 
 #[derive(Debug)]
-struct Node<B>
+struct Node
 {
-    prev: Option<NonNull<Node<B>>>,
-    nexts: Vec<NonNull<Node<B>>>,
-    block: B,
+    prev: Option<NonNull<Node>>,
+    nexts: Vec<NonNull<Node>>,
+    block: BlockData,
 }
 
-impl<B, G> BlockTree<B, G>
-where
-    B: BlockData,
-    G: BlockGenerator<BlockData = B>,
+impl BlockTree
 {
+    pub fn new(network: Network) -> BlockTree
+    {
+        BlockTree::with_start(BlockData::genesis(network))
+    }
+
+    pub fn with_start(block_data: BlockData) -> BlockTree
+    {
+        let node = Node::new(block_data);
+        BlockTree {
+            active_nodes: vec![node],
+        }
+    }
+
     /// # Note
     /// Does not check blockchain validity
     ///
     /// # Panic
     /// if a length of `blocks` is 0.
-    pub fn with_initial(blocks: Vec<B>, generator: G) -> BlockTree<B, G>
+    pub fn with_initial(blocks: Vec<BlockData>) -> BlockTree
     {
         assert!(blocks.len() > 0);
 
-        let mut nodes: Vec<NonNull<Node<B>>> = blocks.into_iter().map(Node::new).collect();
+        let mut nodes: Vec<NonNull<Node>> = blocks.into_iter().map(Node::new).collect();
 
         {
             // updaet `prev` field
@@ -56,19 +64,15 @@ where
             }
         }
 
-        BlockTree {
-            active_nodes: nodes,
-            block_generator: generator,
-        }
+        BlockTree { active_nodes: nodes }
     }
 
-    pub fn try_add(&mut self, block: Block) -> Result<(), NotFoundPrevBlock>
+    pub fn try_add(&mut self, block_header: BlockHeader) -> Result<(), NotFoundPrevBlock>
     {
         /* Defines some useful function */
 
         // Returns last common `Node` between `active_chain` and `node_ptr`'s branch.
-        fn find_last_common<B: BlockData>(active_chain: ActiveChain<B>, node_ptr: NonNull<Node<B>>)
-            -> NonNull<Node<B>>
+        fn find_last_common(active_chain: ActiveChain, node_ptr: NonNull<Node>) -> NonNull<Node>
         {
             let node = unsafe { node_ptr.as_ref() };
             if active_chain.contains(&node.block) {
@@ -82,7 +86,7 @@ where
 
         // Rewinded `active_chain` contains a node whose height is `rewind_height`.
         // Length of `active_chain` must be long enough.
-        fn rewind_active_chain<B: BlockData>(active_chain: &mut Vec<NonNull<Node<B>>>, rewind_height: usize)
+        fn rewind_active_chain(active_chain: &mut Vec<NonNull<Node>>, rewind_height: usize)
         {
             unsafe {
                 let start_height = active_chain[0].as_ref().block.height();
@@ -91,7 +95,7 @@ where
             }
         }
 
-        fn append_nodes<B>(active_chain: &mut Vec<NonNull<Node<B>>>, node_ptr: NonNull<Node<B>>)
+        fn append_nodes(active_chain: &mut Vec<NonNull<Node>>, node_ptr: NonNull<Node>)
         {
             unsafe {
                 let node = node_ptr.as_ref();
@@ -106,19 +110,18 @@ where
         /* logic starts from here */
 
         // Search prev block of given block
-        let prev_node = match self.find_block(block.header.prev_blockhash) {
-            None => return Err(NotFoundPrevBlock(block)),
+        let prev_node = match self.find_node(block_header.prev_blockhash) {
+            None => return Err(NotFoundPrevBlock(block_header)),
             Some(node) => node,
         };
 
         // Generates `BlockData`.
         let prev_block_height = unsafe { prev_node.as_ref().block.height() };
         let new_block_height = prev_block_height + 1;
-        let raw_block_data = RawBlockData::new(block, new_block_height);
-        let block_data = self.block_generator.generate_block(raw_block_data);
+        let new_block_data = BlockData::new(block_header, new_block_height);
 
         // Creates a new node
-        let new_node = Node::append_block(prev_node, block_data);
+        let new_node = Node::append_block(prev_node, new_block_data);
 
         // If new_node is a new tip, replace
         let tail_block_height = unsafe { self.active_nodes.last().unwrap().as_ref().block.height() };
@@ -135,9 +138,9 @@ where
 
     /// Find a block whose bitcoin_hash is equal to given hash
     /// It is depth first search.
-    fn find_block(&self, hash: Sha256dHash) -> Option<NonNull<Node<B>>>
+    fn find_node(&self, hash: Sha256dHash) -> Option<NonNull<Node>>
     {
-        fn inner<B: BlockData>(node_ptr: NonNull<Node<B>>, hash: Sha256dHash) -> Option<NonNull<Node<B>>>
+        fn inner(node_ptr: NonNull<Node>, hash: Sha256dHash) -> Option<NonNull<Node>>
         {
             let node = unsafe { node_ptr.as_ref() };
 
@@ -157,7 +160,7 @@ where
         inner(self.active_nodes[0], hash)
     }
 
-    pub fn active_chain(&self) -> ActiveChain<B>
+    pub fn active_chain(&self) -> ActiveChain
     {
         ActiveChain {
             nodes: &self.active_nodes,
@@ -165,9 +168,10 @@ where
     }
 
     /// Pop head block.
+    ///
     /// # Panic
-    /// if the number of block contained is 1.
-    pub fn pop_head_unchecked(&mut self) -> B
+    /// if only one block is contained.
+    pub fn pop_head_unchecked(&mut self) -> BlockData
     {
         let poped_head = self.active_nodes.remove(0);
         let mut next_head = self.active_nodes[0]; // panic if length is 1.
@@ -187,7 +191,7 @@ where
     }
 }
 
-impl<B, G> Drop for BlockTree<B, G>
+impl Drop for BlockTree
 {
     fn drop(&mut self)
     {
@@ -195,9 +199,9 @@ impl<B, G> Drop for BlockTree<B, G>
     }
 }
 
-impl<B> Node<B>
+impl Node
 {
-    fn new(block: B) -> NonNull<Node<B>>
+    fn new(block: BlockData) -> NonNull<Node>
     {
         let new_node = Node {
             prev: None,
@@ -207,7 +211,7 @@ impl<B> Node<B>
         unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(new_node))) }
     }
 
-    fn append_block(mut node: NonNull<Node<B>>, block: B) -> NonNull<Node<B>>
+    fn append_block(mut node: NonNull<Node>, block: BlockData) -> NonNull<Node>
     {
         let new_node = Node {
             prev: Some(node.clone()),
@@ -222,13 +226,13 @@ impl<B> Node<B>
         new_node_ptr
     }
 
-    fn into_block(self: Box<Self>) -> B
+    fn into_block(self: Box<Self>) -> BlockData
     {
         self.block
     }
 }
 
-unsafe fn drop_with_sub_node<B>(node_ptr: NonNull<Node<B>>)
+unsafe fn drop_with_sub_node(node_ptr: NonNull<Node>)
 {
     for next in node_ptr.as_ref().nexts.iter() {
         drop_with_sub_node(*next);
@@ -236,20 +240,20 @@ unsafe fn drop_with_sub_node<B>(node_ptr: NonNull<Node<B>>)
     drop(Box::from_raw(node_ptr.as_ptr()));
 }
 
-pub struct ActiveChain<'a, B: 'a>
+pub struct ActiveChain<'a>
 {
     // TODO : Need non-alocation way
-    nodes: &'a Vec<NonNull<Node<B>>>,
+    nodes: &'a Vec<NonNull<Node>>,
 }
 
-impl<'a, B: BlockData> ActiveChain<'a, B>
+impl<'a> ActiveChain<'a>
 {
     pub fn len(&self) -> usize
     {
         self.nodes.len()
     }
 
-    pub fn get_block(&self, height: usize) -> Option<&B>
+    pub fn get_block(&self, height: usize) -> Option<&BlockData>
     {
         let start_height = self.iter().next().unwrap().height();
         if start_height < height {
@@ -260,12 +264,12 @@ impl<'a, B: BlockData> ActiveChain<'a, B>
             .map(|p| unsafe { &p.as_ref().block })
     }
 
-    pub fn contains(&self, b: &B) -> bool
+    pub fn contains(&self, block: &BlockData) -> bool
     {
-        self.get_block(b.height()).is_some()
+        self.get_block(block.height()).is_some()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &B> + DoubleEndedIterator
+    pub fn iter(&self) -> impl Iterator<Item = &BlockData> + DoubleEndedIterator
     {
         self.nodes.iter().map(|node| unsafe { &node.as_ref().block })
     }

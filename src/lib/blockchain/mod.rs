@@ -4,12 +4,10 @@ mod blocktree;
 mod block;
 
 pub use self::blockchainmut::BlockChainMut;
-// pub use self::blockchain::BlockChain;
 pub use self::blocktree::BlockTree;
-pub use self::block::{BlockData, BlockGenerator, DefaultBlockGenerator, FullBlockData, HeaderOnlyBlockData,
-                      RawBlockData};
+pub use self::block::BlockData;
 
-use bitcoin::blockdata::block::Block;
+use bitcoin::blockdata::block::BlockHeader;
 
 #[derive(Debug)]
-pub struct NotFoundPrevBlock(pub Block);
+pub struct NotFoundPrevBlock(pub BlockHeader);

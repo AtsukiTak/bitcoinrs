@@ -1,153 +1,46 @@
-use bitcoin::blockdata::{block::{Block, BlockHeader}, constants::genesis_block};
+use bitcoin::blockdata::{block::BlockHeader, constants::genesis_block};
 use bitcoin::network::{constants::Network, serialize::BitcoinHash};
 use bitcoin::util::hash::Sha256dHash;
 
-/*  Trait definition */
-
-pub trait BlockData: BitcoinHash
-{
-    fn height(&self) -> usize;
-
-    fn header(&self) -> &BlockHeader;
-}
-
-pub trait FullBlockData: BlockData
-{
-    fn block(&self) -> &Block;
-}
-
-pub trait BlockGenerator
-{
-    type BlockData: BlockData;
-
-    fn generate_block(&mut self, block: RawBlockData) -> Self::BlockData;
-}
-
-/*  BlockData definition */
-
 #[derive(Debug)]
-pub struct RawBlockData
+pub struct BlockData
 {
-    pub block: Block,
+    pub header: BlockHeader,
     pub height: usize,
     hash: Sha256dHash,
 }
 
-impl RawBlockData
+impl BlockData
 {
-    pub fn new(block: Block, height: usize) -> RawBlockData
+    pub fn new(header: BlockHeader, height: usize) -> BlockData
     {
-        RawBlockData {
-            hash: block.bitcoin_hash(),
-            block,
-            height,
-        }
-    }
-
-    pub fn genesis(network: Network) -> RawBlockData
-    {
-        RawBlockData::new(genesis_block(network), 0)
-    }
-}
-
-impl BitcoinHash for RawBlockData
-{
-    fn bitcoin_hash(&self) -> Sha256dHash
-    {
-        self.hash
-    }
-}
-
-impl BlockData for RawBlockData
-{
-    fn height(&self) -> usize
-    {
-        self.height
-    }
-
-    fn header(&self) -> &BlockHeader
-    {
-        &self.block.header
-    }
-}
-
-impl FullBlockData for RawBlockData
-{
-    fn block(&self) -> &Block
-    {
-        &self.block
-    }
-}
-
-#[derive(Debug)]
-pub struct HeaderOnlyBlockData
-{
-    header: BlockHeader,
-    height: usize,
-    hash: Sha256dHash,
-}
-
-impl HeaderOnlyBlockData
-{
-    pub fn new(header: BlockHeader, height: usize) -> HeaderOnlyBlockData
-    {
-        HeaderOnlyBlockData {
+        BlockData {
             hash: header.bitcoin_hash(),
-            height,
             header,
+            height,
         }
     }
 
-    pub fn genesis(network: Network) -> HeaderOnlyBlockData
+    pub fn genesis(network: Network) -> BlockData
     {
-        HeaderOnlyBlockData::new(genesis_block(network).header, 0)
+        BlockData::new(genesis_block(network).header, 0)
     }
-}
 
-impl BitcoinHash for HeaderOnlyBlockData
-{
-    fn bitcoin_hash(&self) -> Sha256dHash
-    {
-        self.hash
-    }
-}
-
-impl BlockData for HeaderOnlyBlockData
-{
-    fn header(&self) -> &BlockHeader
+    pub fn header(&self) -> &BlockHeader
     {
         &self.header
     }
 
-    fn height(&self) -> usize
+    pub fn height(&self) -> usize
     {
         self.height
     }
 }
 
-/*  BlockGenerator definition */
-
-pub struct DefaultBlockGenerator;
-
-impl BlockGenerator for DefaultBlockGenerator
+impl BitcoinHash for BlockData
 {
-    type BlockData = RawBlockData;
-
-    fn generate_block(&mut self, block: RawBlockData) -> Self::BlockData
+    fn bitcoin_hash(&self) -> Sha256dHash
     {
-        block
-    }
-}
-
-impl<B, G> BlockGenerator for G
-where
-    G: FnMut(RawBlockData) -> B,
-    B: BlockData,
-{
-    type BlockData = B;
-
-    fn generate_block(&mut self, block: RawBlockData) -> Self::BlockData
-    {
-        self(block)
+        self.hash
     }
 }

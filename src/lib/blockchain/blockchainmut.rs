@@ -1,7 +1,8 @@
-use bitcoin::blockdata::block::Block;
+use bitcoin::blockdata::block::BlockHeader;
+use bitcoin::network::serialize::BitcoinHash;
 use bitcoin::util::hash::Sha256dHash;
 
-use super::{blocktree, BlockData, BlockGenerator, BlockTree, NotFoundPrevBlock};
+use super::{blocktree, BlockData, BlockTree, NotFoundPrevBlock};
 
 const DEFAULT_ENOUGH_CONF: usize = 100;
 
@@ -9,43 +10,44 @@ const DEFAULT_ENOUGH_CONF: usize = 100;
 /// The performance is higher than `BlockTree`.
 /// To achieve such performance, this implementation is based on tiny assumption;
 /// the block which has enough confirmation will never be changed.
-pub struct BlockChainMut<B, G>
+pub struct BlockChainMut
 {
-    stable_chain: StableBlockChain<B>,
-    unstable_chain: BlockTree<B, G>,
+    stable_chain: StableBlockChain,
+
+    unstable_chain: BlockTree,
+
+    // The number of confirmation needed to become stable.
     enough_confirmation: usize,
 }
 
-impl<B, G> BlockChainMut<B, G>
-where
-    B: BlockData,
-    G: BlockGenerator<BlockData = B>,
+impl BlockChainMut
 {
     /// Creaet a new `BlockChainMut` struct with start block.
     /// Note that given start block **MUST** be stable one.
     ///
     /// # Panic
     /// if a length of `blocks` is 0.
-    pub fn with_initial(blocks: Vec<B>, generator: G) -> BlockChainMut<B, G>
+    pub fn with_initial(blocks: Vec<BlockData>) -> BlockChainMut
     {
         assert!(blocks.len() > 0);
 
         BlockChainMut {
             stable_chain: StableBlockChain::new(),
-            unstable_chain: BlockTree::with_initial(blocks, generator),
+            unstable_chain: BlockTree::with_initial(blocks),
             enough_confirmation: DEFAULT_ENOUGH_CONF,
         }
     }
 
     /// Sets the `enough_confirmation` field.
-    pub fn set_enough_confirmation(&mut self, conf: usize) {
+    pub fn set_enough_confirmation(&mut self, conf: usize)
+    {
         self.enough_confirmation = conf;
     }
 
     /// Try to add a new block.
-    pub fn try_add(&mut self, block: Block) -> Result<(), NotFoundPrevBlock>
+    pub fn try_add(&mut self, block_header: BlockHeader) -> Result<(), NotFoundPrevBlock>
     {
-        self.unstable_chain.try_add(block)?;
+        self.unstable_chain.try_add(block_header)?;
 
         while self.unstable_chain.active_chain().len() > self.enough_confirmation {
             let stabled_block = self.unstable_chain.pop_head_unchecked();
@@ -55,7 +57,7 @@ where
         Ok(())
     }
 
-    pub fn active_chain(&self) -> ActiveChain<B>
+    pub fn active_chain(&self) -> ActiveChain
     {
         ActiveChain {
             stabled: self.stable_chain.as_vec(),
@@ -64,7 +66,7 @@ where
     }
 }
 
-impl<B, G> ::std::fmt::Debug for BlockChainMut<B, G>
+impl ::std::fmt::Debug for BlockChainMut
 {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
     {
@@ -73,43 +75,43 @@ impl<B, G> ::std::fmt::Debug for BlockChainMut<B, G>
 }
 
 /// Chain of blocks which is confirmed enough.
-struct StableBlockChain<B>
+struct StableBlockChain
 {
-    blocks: Vec<B>,
+    blocks: Vec<BlockData>,
 }
 
-impl<B: BlockData> StableBlockChain<B>
+impl StableBlockChain
 {
-    fn new() -> StableBlockChain<B>
+    fn new() -> StableBlockChain
     {
         StableBlockChain { blocks: Vec::new() }
     }
 
-    fn add_block(&mut self, block: B)
+    fn add_block(&mut self, block: BlockData)
     {
         self.blocks.push(block);
     }
 
-    fn as_vec(&self) -> &Vec<B>
+    fn as_vec(&self) -> &Vec<BlockData>
     {
         &self.blocks
     }
 }
 
-pub struct ActiveChain<'a, B: 'a>
+pub struct ActiveChain<'a>
 {
-    stabled: &'a Vec<B>,
-    unstabled: blocktree::ActiveChain<'a, B>,
+    stabled: &'a Vec<BlockData>,
+    unstabled: blocktree::ActiveChain<'a>,
 }
 
-impl<'a, B: BlockData> ActiveChain<'a, B>
+impl<'a> ActiveChain<'a>
 {
     pub fn len(&self) -> usize
     {
         self.stabled.len() + self.unstabled.len()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &B> + DoubleEndedIterator
+    pub fn iter(&self) -> impl Iterator<Item = &BlockData> + DoubleEndedIterator
     {
         let stabled_iter = self.stabled.iter();
         let unstabled_iter = self.unstabled.iter();
@@ -120,13 +122,13 @@ impl<'a, B: BlockData> ActiveChain<'a, B>
     ///
     /// The key of this function is `unwrap`; since there are always start block at least,
     /// we can call `unwrap`.
-    pub fn latest_block(&self) -> &B
+    pub fn latest_block(&self) -> &BlockData
     {
         self.iter().rev().next().unwrap() // since there are always start block
     }
 
     /// Get block whose hash is exactly same with given hash.
-    pub fn get_block(&self, hash: Sha256dHash) -> Option<&B>
+    pub fn get_block(&self, hash: Sha256dHash) -> Option<&BlockData>
     {
         self.iter().find(move |b| b.bitcoin_hash() == hash)
     }
@@ -138,7 +140,7 @@ impl<'a, B: BlockData> ActiveChain<'a, B>
     /// It should be improved in future.
     /// Bitcoin core's implementation is here.
     /// https://github.com/bitcoin/bitcoin/blob/master/src/chain.cpp#L23
-    pub fn locator_blocks(&self) -> impl Iterator<Item = &B>
+    pub fn locator_blocks(&self) -> impl Iterator<Item = &BlockData>
     {
         self.iter().rev().take(10)
     }

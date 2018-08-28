@@ -5,7 +5,7 @@ use futures::future::{loop_fn, Future, Loop};
 use std::cmp::min;
 
 use connection::Connection;
-use blockchain::{BlockChainMut, BlockData, BlockGenerator};
+use blockchain::BlockChainMut;
 use error::{Error, ErrorKind};
 use super::{getblocks, getheaders};
 
@@ -14,13 +14,10 @@ use super::{getblocks, getheaders};
 /// block. When process is completed, finally `Connection` is returned.
 /// Note that `start_block` must be a stabled one such as genesis block or
 /// enough confirmed block.
-pub fn initial_block_download<B, G>(
+pub fn initial_block_download(
     conn: Connection,
-    block_chain: BlockChainMut<B, G>,
-) -> impl Future<Item = (Connection, BlockChainMut<B, G>), Error = Error>
-where
-    B: BlockData,
-    G: BlockGenerator<BlockData = B>,
+    block_chain: BlockChainMut,
+) -> impl Future<Item = (Connection, BlockChainMut), Error = Error>
 {
     let locator_hashes: Vec<Sha256dHash> = {
         let mut vec = Vec::new();
@@ -60,14 +57,11 @@ fn download_all_headers(
     )
 }
 
-fn download_all_blocks<B, G>(
+fn download_all_blocks(
     conn: Connection,
     new_headers: Vec<BlockHeader>,
-    block_chain: BlockChainMut<B, G>,
-) -> impl Future<Item = (Connection, BlockChainMut<B, G>), Error = Error>
-where
-    B: BlockData,
-    G: BlockGenerator<BlockData = B>,
+    block_chain: BlockChainMut,
+) -> impl Future<Item = (Connection, BlockChainMut), Error = Error>
 {
     const NUM_BLOCKS_REQ_AT_ONCE: usize = 16;
 
@@ -79,7 +73,7 @@ where
             getblocks(conn, req_header_hashes).and_then(move |(conn, blocks)| {
                 // Store all blocks into blockchain
                 for block in blocks {
-                    match block_chain.try_add(block) {
+                    match block_chain.try_add(block.header) {
                         Ok(_) => info!("Added a new block"),
                         Err(_e) => {
                             warn!("Peer {} sends us an invalid block", conn);
