@@ -5,7 +5,7 @@ use futures::future::{loop_fn, Future, Loop};
 use std::cmp::min;
 
 use connection::Connection;
-use blockchain::BlockChainMut;
+use blockchain::BlockChain;
 use error::{Error, ErrorKind};
 use super::{getblocks, getheaders};
 
@@ -16,8 +16,8 @@ use super::{getblocks, getheaders};
 /// enough confirmed block.
 pub fn initial_block_download(
     conn: Connection,
-    block_chain: BlockChainMut,
-) -> impl Future<Item = (Connection, BlockChainMut), Error = Error>
+    block_chain: BlockChain,
+) -> impl Future<Item = (Connection, BlockChain), Error = Error>
 {
     download_all_headers(conn, block_chain.active_chain().locator_hashes_vec())
         .and_then(move |(conn, headers)| download_all_blocks(conn, headers, block_chain))
@@ -52,8 +52,8 @@ fn download_all_headers(
 fn download_all_blocks(
     conn: Connection,
     new_headers: Vec<BlockHeader>,
-    block_chain: BlockChainMut,
-) -> impl Future<Item = (Connection, BlockChainMut), Error = Error>
+    block_chain: BlockChain,
+) -> impl Future<Item = (Connection, BlockChain), Error = Error>
 {
     const NUM_BLOCKS_REQ_AT_ONCE: usize = 16;
 

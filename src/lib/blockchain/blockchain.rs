@@ -1,108 +1,222 @@
-use bitcoin::blockdata::block::Block;
-use bitcoin::network::serialize::BitcoinHash;
+use bitcoin::blockdata::block::BlockHeader;
+use bitcoin::network::{constants::Network, serialize::BitcoinHash};
 use bitcoin::util::hash::Sha256dHash;
 
-use super::BlockData;
+use super::{blocktree, BlockData, BlockTree, NotFoundPrevBlock};
 
-pub trait BlockChain
+const DEFAULT_ENOUGH_CONF: usize = 100;
+
+/// A hybrid implementation of blockchain.
+/// The performance is higher than `BlockTree`.
+/// To achieve such performance, this implementation is based on tiny assumption;
+/// the block which has enough confirmation will never be changed.
+pub struct BlockChain
 {
-    type Block: BlockData;;
+    stable_chain: StableBlockChain,
 
-    fn try_add_block(&mut self, block: Block) -> Result<&Self::Block, NotFoundPrevBlock>;
+    unstable_chain: BlockTree,
 
-    fn active_chain<'a>(&'a self) -> <&'a Self as IntoActiveChain>::ActiveChain
-    where &'a Self: IntoActiveChain
+    // The number of confirmation needed to become stable.
+    enough_confirmation: usize,
+}
+
+impl BlockChain
+{
+    pub fn new(network: Network) -> BlockChain
     {
-        self.into_active_chain()
+        BlockChain::with_start(BlockData::genesis(network))
+    }
+
+    pub fn with_start(block: BlockData) -> BlockChain
+    {
+        BlockChain {
+            stable_chain: StableBlockChain::new(),
+            unstable_chain: BlockTree::with_start(block),
+            enough_confirmation: DEFAULT_ENOUGH_CONF,
+        }
+    }
+
+    /// Sets the `enough_confirmation` field.
+    pub fn set_enough_confirmation(&mut self, conf: usize)
+    {
+        self.enough_confirmation = conf;
+    }
+
+    /// Try to add a new block.
+    pub fn try_add(&mut self, block_header: BlockHeader) -> Result<(), NotFoundPrevBlock>
+    {
+        self.unstable_chain.try_add(block_header)?;
+
+        while self.unstable_chain.active_chain().len() > self.enough_confirmation {
+            let stabled_block = self.unstable_chain.pop_head_unchecked();
+            self.stable_chain.add_block(stabled_block);
+        }
+
+        Ok(())
+    }
+
+    pub fn active_chain(&self) -> ActiveChain
+    {
+        ActiveChain {
+            stabled: self.stable_chain.as_vec(),
+            unstabled: self.unstable_chain.active_chain(),
+        }
     }
 }
 
-pub trait IntoActiveChain
+impl ::std::fmt::Debug for BlockChain
 {
-    type ActiveChain: ActiveChain;
-
-    fn into_active_chain(self) -> Self::ActiveChain;
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
+    {
+        write!(f, "BlockChain{{ .. }}")
+    }
 }
 
-/// Oldest block comes first, latest block comes last.
-pub trait ActiveChain
+/// Chain of blocks which is confirmed enough.
+struct StableBlockChain
 {
-    type Block;
-    type Iter: Iterator<Item = Self::Block> + DoubleEndedIterator;
+    blocks: Vec<BlockData>,
+}
 
-    fn len(&self) -> usize;
+impl StableBlockChain
+{
+    fn new() -> StableBlockChain
+    {
+        StableBlockChain { blocks: Vec::new() }
+    }
 
-    fn iter(&self) -> Self::Iter;
+    fn add_block(&mut self, block: BlockData)
+    {
+        self.blocks.push(block);
+    }
+
+    fn as_vec(&self) -> &Vec<BlockData>
+    {
+        &self.blocks
+    }
+}
+
+pub struct ActiveChain<'a>
+{
+    stabled: &'a Vec<BlockData>,
+    unstabled: blocktree::ActiveChain<'a>,
+}
+
+impl<'a> ActiveChain<'a>
+{
+    pub fn len(&'a self) -> usize
+    {
+        self.stabled.len() + self.unstabled.len()
+    }
+
+    pub fn iter(&'a self) -> impl Iterator<Item = &'a BlockData> + DoubleEndedIterator
+    {
+        let stabled_iter = self.stabled.iter();
+        let unstabled_iter = self.unstabled.iter();
+        stabled_iter.chain(unstabled_iter)
+    }
 
     /// Get latest block
-    fn latest_block(&self) -> Self::Block
+    ///
+    /// The key of this function is `unwrap`; since there are always start block at least,
+    /// we can call `unwrap`.
+    pub fn latest_block(&'a self) -> &'a BlockData
     {
-        self.iter().rev().next().expect("No blocks in ActiveChain")
+        self.iter().rev().next().unwrap() // since there are always start block
     }
 
-    /// Get specified block
-    fn get_block(&self, hash: Sha256dHash) -> Option<Self::Block>
-    where Self::Block: BitcoinHash
+    /// Get block whose hash is exactly same with given hash.
+    pub fn get_block(&'a self, hash: Sha256dHash) -> Option<&'a BlockData>
     {
         self.iter().find(move |b| b.bitcoin_hash() == hash)
     }
-}
 
-/// A simple implementation of blockchain.
-///  All blocks are active.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LinerBlockChain<B>
-{
-    blocks: Vec<B>,
-}
-
-pub struct ActiveLinerBlockChain<'a, B: 'a>
-{
-    blocks: &'a Vec<B>,
-}
-
-impl<B: StoredBlock> LinerBlockChain<B>
-{
-    pub fn new(blocks: Vec<B>) -> LinerBlockChain<B>
+    /// Get locator block's hash iterator.
+    ///
+    /// # Note
+    /// Current implementation is **VERY** **VERY** simple.
+    /// It should be improved in future.
+    /// Bitcoin core's implementation is here.
+    /// https://github.com/bitcoin/bitcoin/blob/master/src/chain.cpp#L23
+    pub fn locator_hashes(&'a self) -> impl Iterator<Item = Sha256dHash> + 'a
     {
-        LinerBlockChain { blocks }
+        self.iter().rev().take(10).map(|b| b.bitcoin_hash())
+    }
+
+    pub fn locator_hashes_vec(&'a self) -> Vec<Sha256dHash>
+    {
+        let mut vec = Vec::with_capacity(10);
+        for hash in self.locator_hashes() {
+            vec.push(hash);
+        }
+        vec
     }
 }
 
-impl<B: StoredBlock> BlockChain for LinerBlockChain<B>
+/// TODO: Should test re-org case
+#[cfg(test)]
+mod tests
 {
-    type Block = B;
+    use super::*;
 
-    fn try_add_block(&mut self, block: Block) -> Option<&Self::Block>
+    fn dummy_block_header(prev_hash: Sha256dHash) -> BlockHeader
     {
-        self.blocks.push(block);
-        Some(self.blocks.last().unwrap())
-    }
-}
-
-impl<'a, B> IntoActiveChain for &'a LinerBlockChain<B>
-{
-    type ActiveChain = ActiveLinerBlockChain<'a, B>;
-
-    fn into_active_chain(self) -> Self::ActiveChain
-    {
-        ActiveLinerBlockChain { blocks: &self.blcoks }
-    }
-}
-
-impl<'a, B> ActiveChain for ActiveLinerBlockChain<'a, B>
-{
-    type Block = &'a B;
-    type Iter = ::std::slice::Iter<'a, B>;
-
-    /// Get length of current best chain.
-    fn len(&self) -> usize
-    {
-        self.blocks.len()
+        let header = BlockHeader {
+            version: 1,
+            prev_blockhash: prev_hash,
+            merkle_root: Sha256dHash::default(),
+            time: 0,
+            bits: 0,
+            nonce: 0,
+        };
+        header
     }
 
-    fn iter(&self) -> Self::Iter
+    #[test]
+    fn blockchainmut_try_add()
     {
-        self.blocks.iter()
+        let start_block_header = dummy_block_header(Sha256dHash::default());
+        let next_block_header = dummy_block_header(start_block_header.bitcoin_hash());
+        let start_block = BlockData::new(start_block_header, 0);
+        let mut blockchain = BlockChain::with_start(start_block);
+
+        assert_eq!(blockchain.active_chain().len(), 1);
+
+        blockchain.try_add(next_block_header).unwrap(); // Should success.
+
+        assert_eq!(blockchain.active_chain().len(), 2);
+
+        let active_chain = blockchain.active_chain();
+        let headers: Vec<_> = active_chain.iter().map(|b| b.header).collect();
+        assert_eq!(headers, vec![start_block_header, next_block_header]);
+    }
+
+    #[test]
+    fn add_8_blocks_to_blockchainmut()
+    {
+        let block1 = dummy_block_header(Sha256dHash::default());
+        let block2 = dummy_block_header(block1.bitcoin_hash());
+        let block3 = dummy_block_header(block2.bitcoin_hash());
+        let block4 = dummy_block_header(block3.bitcoin_hash());
+        let block5 = dummy_block_header(block4.bitcoin_hash());
+        let block6 = dummy_block_header(block5.bitcoin_hash());
+        let block7 = dummy_block_header(block6.bitcoin_hash());
+        let block8 = dummy_block_header(block7.bitcoin_hash());
+
+        let block1_data = BlockData::new(block1, 0);
+
+        let mut blockchain = BlockChain::with_start(block1_data);
+        blockchain.set_enough_confirmation(7);
+
+        blockchain.try_add(block2).unwrap();
+        blockchain.try_add(block3).unwrap();
+        blockchain.try_add(block4).unwrap();
+        blockchain.try_add(block5).unwrap();
+        blockchain.try_add(block6).unwrap();
+        blockchain.try_add(block7).unwrap();
+        blockchain.try_add(block8).unwrap();
+
+        assert_eq!(blockchain.stable_chain.blocks.len(), 1);
+        assert_eq!(blockchain.unstable_chain.active_chain().len(), 7);
     }
 }

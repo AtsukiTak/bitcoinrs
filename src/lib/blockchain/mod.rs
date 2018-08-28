@@ -1,9 +1,8 @@
-mod blockchainmut;
-// mod blockchain;
+mod blockchain;
 mod blocktree;
 mod block;
 
-pub use self::blockchainmut::BlockChainMut;
+pub use self::blockchain::BlockChain;
 pub use self::blocktree::BlockTree;
 pub use self::block::BlockData;
 
