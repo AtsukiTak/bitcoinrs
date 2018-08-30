@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use bitcoin::network::serialize::BitcoinHash;
 
-use blockchain::{BlockChain, BlockDataLike, BlockData};
+use blockchain::{BlockChain, BlockData, BlockDataLike};
 
 /// A manager who handles some datas associated with `BlockData`.
 /// Internal datas are consecutive.
@@ -10,11 +10,7 @@ pub struct BlockAssociatedDataManager<T>
     datas: VecDeque<T>,
 }
 
-pub trait BlockAssociatedData: BlockDataLike
-{
-}
-
-impl<T: BlockAssociatedData> BlockAssociatedDataManager<T>
+impl<T: BlockDataLike> BlockAssociatedDataManager<T>
 {
     pub fn new() -> BlockAssociatedDataManager<T>
     {
