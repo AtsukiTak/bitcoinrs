@@ -1,8 +1,8 @@
-use bitcoin::blockdata::{block::BlockHeader, constants::genesis_block};
+use bitcoin::blockdata::{block::{Block, BlockHeader}, constants::genesis_block};
 use bitcoin::network::{constants::Network, serialize::BitcoinHash};
 use bitcoin::util::hash::Sha256dHash;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Copy, Debug, Clone, PartialEq, Eq)]
 pub struct BlockData
 {
     pub header: BlockHeader,
@@ -45,6 +45,39 @@ impl BitcoinHash for BlockData
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FullBlockData
+{
+    pub block: Block,
+    pub height: usize,
+    hash: Sha256dHash,
+}
+
+impl FullBlockData
+{
+    pub fn new(block: Block, height: usize) -> FullBlockData
+    {
+        FullBlockData {
+            hash: block.bitcoin_hash(),
+            block,
+            height,
+        }
+    }
+
+    pub fn genesis(network: Network) -> FullBlockData
+    {
+        FullBlockData::new(genesis_block(network), 0)
+    }
+}
+
+impl BitcoinHash for FullBlockData
+{
+    fn bitcoin_hash(&self) -> Sha256dHash
+    {
+        self.hash
+    }
+}
+
 pub trait BlockDataLike: BitcoinHash
 {
     fn header(&self) -> &BlockHeader;
@@ -61,5 +94,18 @@ impl BlockDataLike for BlockData
     fn height(&self) -> usize
     {
         self.height()
+    }
+}
+
+impl BlockDataLike for FullBlockData
+{
+    fn header(&self) -> &BlockHeader
+    {
+        &self.block.header
+    }
+
+    fn height(&self) -> usize
+    {
+        self.height
     }
 }

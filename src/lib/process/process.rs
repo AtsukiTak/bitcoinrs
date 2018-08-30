@@ -1,9 +1,10 @@
 use futures::future::{loop_fn, Future, Loop};
+use bitcoin::network::serialize::BitcoinHash;
 
 use connection::Connection;
-use blockchain::BlockChain;
+use blockchain::{BlockChain, BlockData, FullBlockData};
 use error::{Error, ErrorKind};
-use process::request::getheaders;
+use process::request::{getblocks, getheaders};
 
 /// Sync given `BlockChain` with latest blockchain.
 /// This process only syncs `BlockHeader`.
@@ -37,4 +38,20 @@ pub fn sync_blockchain(
             })
         },
     )
+}
+
+pub fn request_full_blocks(
+    conn: Connection,
+    block_datas: Vec<BlockData>,
+) -> impl Future<Item = (Connection, Vec<FullBlockData>), Error = Error>
+{
+    let block_hashes = block_datas.iter().map(|b| b.bitcoin_hash()).collect();
+    getblocks(conn, block_hashes).map(move |(conn, blocks)| {
+        let full_block_datas = blocks
+            .into_iter()
+            .zip(block_datas)
+            .map(|(block, data)| FullBlockData::new(block, data.height()))
+            .collect();
+        (conn, full_block_datas)
+    })
 }
