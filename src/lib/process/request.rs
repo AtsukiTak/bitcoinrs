@@ -63,7 +63,7 @@ pub fn request_getheaders(
 
 pub fn wait_recv_headers(conn: Connection) -> impl Future<Item = (Connection, Vec<BlockHeader>), Error = Error>
 {
-    conn.recv_msg().then(move |res| {
+    conn.recv_msg().then(|res| {
         match res? {
             (IncomingMessage::Headers(hs), conn) => {
                 info!("Receive headers message");
@@ -126,5 +126,18 @@ pub fn wait_recv_blocks(
                 },
             }
         })
+    })
+}
+
+pub fn wait_recv_inv(conn: Connection) -> impl Future<Item = (Connection, Vec<Inventory>), Error = Error>
+{
+    conn.recv_msg().then(|res| {
+        match res? {
+            (IncomingMessage::Inv(invs), conn) => Ok((conn, invs)),
+            (msg, conn) => {
+                info!("Receive unexpected message. Expected headers msg but receive {}", msg);
+                Err(Error::from(ErrorKind::MisbehaviorPeer(conn)))
+            },
+        }
     })
 }
