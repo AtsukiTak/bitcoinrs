@@ -56,7 +56,7 @@ impl<T: BlockDataLike> BlockAssociatedDataManager<T>
 
     /// Returns all blocks which is not contained in `self`.
     /// Note that since blockchain's nature, returned blocks are consecutive.
-    pub fn forked_blocks(&self, blockchain: &BlockChain) -> Vec<BlockData>
+    pub fn new_blocks(&self, blockchain: &BlockChain) -> Vec<BlockData>
     {
         let active_chain = blockchain.active_chain();
         let minimum_height = self.minimum_height();
