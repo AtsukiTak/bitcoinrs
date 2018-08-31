@@ -31,6 +31,11 @@ pub fn sync_blockchain(
                     }
                 }
 
+                info!(
+                    "Current height is {}",
+                    block_chain.active_chain().latest_block().height()
+                );
+
                 match is_completed {
                     true => Ok(Loop::Break((conn, block_chain))),
                     false => Ok(Loop::Continue((conn, block_chain))),
