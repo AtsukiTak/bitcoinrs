@@ -9,7 +9,7 @@ use error::{Error, ErrorKind};
 use process::request::{getblocks, getheaders};
 
 const MAX_HEADERS_IN_MSG: usize = 2000;
-const MAX_BLOCKS_IN_MSG: usize = 1000;
+const MAX_BLOCKS_IN_MSG: usize = 50000; // Maximun number of invs in getdata msg
 
 /// Sync given `BlockChain` with latest blockchain.
 /// This process only syncs `BlockHeader`.
