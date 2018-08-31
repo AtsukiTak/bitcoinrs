@@ -40,7 +40,7 @@ pub fn sync_blockchain(
     )
 }
 
-pub fn request_full_blocks(
+pub fn download_full_blocks(
     conn: Connection,
     block_datas: Vec<BlockData>,
 ) -> impl Future<Item = (Connection, Vec<FullBlockData>), Error = Error>
