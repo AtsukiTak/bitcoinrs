@@ -1,3 +1,5 @@
+use std::cmp::min;
+
 use futures::future::{loop_fn, Future, Loop};
 use bitcoin::network::serialize::BitcoinHash;
 
@@ -5,6 +7,9 @@ use connection::Connection;
 use blockchain::{BlockChain, BlockData, FullBlockData};
 use error::{Error, ErrorKind};
 use process::request::{getblocks, getheaders};
+
+const MAX_HEADERS_IN_MSG: usize = 2000;
+const MAX_BLOCKS_IN_MSG: usize = 1000;
 
 /// Sync given `BlockChain` with latest blockchain.
 /// This process only syncs `BlockHeader`.
@@ -14,8 +19,6 @@ pub fn sync_blockchain(
     block_chain: BlockChain,
 ) -> impl Future<Item = (Connection, BlockChain), Error = Error>
 {
-    const MAX_HEADERS_IN_MSG: usize = 2000;
-
     loop_fn(
         (conn, block_chain), // Initial state
         |(conn, mut block_chain)| {
@@ -45,18 +48,38 @@ pub fn sync_blockchain(
     )
 }
 
+/// The number of blocks can be more than MAX_BLOCKS_IN_MSG.
 pub fn download_full_blocks(
     conn: Connection,
-    block_datas: Vec<BlockData>,
+    req_blocks: Vec<BlockData>,
 ) -> impl Future<Item = (Connection, Vec<FullBlockData>), Error = Error>
 {
-    let block_hashes = block_datas.iter().map(|b| b.bitcoin_hash()).collect();
-    getblocks(conn, block_hashes).map(move |(conn, blocks)| {
-        let full_block_datas = blocks
-            .into_iter()
-            .zip(block_datas)
-            .map(|(block, data)| FullBlockData::new(block, data.height()))
-            .collect();
-        (conn, full_block_datas)
-    })
+    let full_blocks_buf = Vec::with_capacity(req_blocks.len());
+
+    loop_fn(
+        (conn, req_blocks, full_blocks_buf), // Initial state
+        |(conn, mut req_blocks, mut full_blocks_buf)| {
+            let n_req_block = min(req_blocks.len(), MAX_BLOCKS_IN_MSG);
+            let rmn_blocks = req_blocks.split_off(n_req_block);
+            let req_block_hashes = req_blocks.iter().map(|b| b.bitcoin_hash()).collect();
+            getblocks(conn, req_block_hashes).map(move |(conn, full_blocks)| {
+                info!("Downloaded {} full blocks", full_blocks.len());
+
+                let full_block_datas = full_blocks
+                    .into_iter()
+                    .zip(req_blocks)
+                    .map(|(block, data)| FullBlockData::new(block, data.height()));
+
+                for full_block_data in full_block_datas {
+                    full_blocks_buf.push(full_block_data);
+                }
+
+                let is_completed = rmn_blocks.is_empty();
+                match is_completed {
+                    true => Loop::Break((conn, full_blocks_buf)),
+                    false => Loop::Continue((conn, rmn_blocks, full_blocks_buf)),
+                }
+            })
+        },
+    )
 }
