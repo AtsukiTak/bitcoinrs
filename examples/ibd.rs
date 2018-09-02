@@ -13,8 +13,7 @@ use bitcoin::util::hash::Sha256dHash;
 
 use futures::Future;
 
-use libyabitcoin::{blockchain::{BlockChain, BlockData}, connection::Connection, process::sync_blockchain,
-                   socket::AsyncSocket};
+use libyabitcoin::{blockchain::{BlockChain, BlockData}, peer::{AsyncSocket, Connection, Peer}};
 
 const DEMO_PEER: &str = "172.105.194.235:8333";
 // const DEMO_PEER: &str = "35.187.215.241:8333";
@@ -28,9 +27,10 @@ fn main()
         .and_then(|socket| Connection::initialize(socket, 0))
         .and_then(|conn| {
             info!("Connected");
+            let peer = Peer::new(conn);
             let start_block = BlockData::new(start_block().header, 0);
             let blockchain = BlockChain::with_start(start_block);
-            sync_blockchain(conn, blockchain)
+            peer.sync_blockchain(blockchain)
         });
 
     ibd_fut.wait().unwrap();
