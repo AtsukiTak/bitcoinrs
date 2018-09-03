@@ -55,12 +55,12 @@ impl BlockTree
 
         // Rewinded `active_chain` contains a node whose height is `rewind_height`.
         // Length of `active_chain` must be long enough.
-        fn rewind_active_chain(active_chain: &mut VecDeque<NonNull<Node>>, rewind_height: usize)
+        fn rewind_active_chain(active_chain: &mut VecDeque<NonNull<Node>>, rewind_height: u32)
         {
             unsafe {
                 let start_height = active_chain[0].as_ref().block.height();
                 let rewind_idx = rewind_height - start_height + 1;
-                active_chain.truncate(rewind_idx);
+                active_chain.truncate(rewind_idx as usize);
             }
         }
 
@@ -217,19 +217,19 @@ pub struct ActiveChain<'a>
 
 impl<'a> ActiveChain<'a>
 {
-    pub fn len(&self) -> usize
+    pub fn len(&self) -> u32
     {
-        self.nodes.len()
+        self.nodes.len() as u32
     }
 
-    pub fn get_block(&self, height: usize) -> Option<&BlockData>
+    pub fn get_block(&self, height: u32) -> Option<&BlockData>
     {
         let start_height = self.iter().next().unwrap().height();
         if start_height < height {
             return None;
         }
         self.nodes
-            .get(height - start_height)
+            .get((height - start_height) as usize)
             .map(|p| unsafe { &p.as_ref().block })
     }
 

@@ -6,13 +6,13 @@ use bitcoin::util::hash::Sha256dHash;
 pub struct BlockData
 {
     pub header: BlockHeader,
-    pub height: usize,
+    pub height: u32,
     hash: Sha256dHash,
 }
 
 impl BlockData
 {
-    pub fn new(header: BlockHeader, height: usize) -> BlockData
+    pub fn new(header: BlockHeader, height: u32) -> BlockData
     {
         BlockData {
             hash: header.bitcoin_hash(),
@@ -31,7 +31,7 @@ impl BlockData
         &self.header
     }
 
-    pub fn height(&self) -> usize
+    pub fn height(&self) -> u32
     {
         self.height
     }
@@ -49,13 +49,13 @@ impl BitcoinHash for BlockData
 pub struct FullBlockData
 {
     pub block: Block,
-    pub height: usize,
+    pub height: u32,
     hash: Sha256dHash,
 }
 
 impl FullBlockData
 {
-    pub fn new(block: Block, height: usize) -> FullBlockData
+    pub fn new(block: Block, height: u32) -> FullBlockData
     {
         FullBlockData {
             hash: block.bitcoin_hash(),
@@ -81,7 +81,7 @@ impl BitcoinHash for FullBlockData
 pub trait BlockDataLike: BitcoinHash
 {
     fn header(&self) -> &BlockHeader;
-    fn height(&self) -> usize;
+    fn height(&self) -> u32;
 }
 
 impl BlockDataLike for BlockData
@@ -91,7 +91,7 @@ impl BlockDataLike for BlockData
         self.header()
     }
 
-    fn height(&self) -> usize
+    fn height(&self) -> u32
     {
         self.height()
     }
@@ -104,7 +104,7 @@ impl BlockDataLike for FullBlockData
         &self.block.header
     }
 
-    fn height(&self) -> usize
+    fn height(&self) -> u32
     {
         self.height
     }

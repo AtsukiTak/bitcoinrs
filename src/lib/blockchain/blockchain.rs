@@ -4,7 +4,7 @@ use bitcoin::util::hash::Sha256dHash;
 
 use super::{blocktree, BlockData, BlockTree, NotFoundPrevBlock};
 
-const DEFAULT_ENOUGH_CONF: usize = 100;
+const DEFAULT_ENOUGH_CONF: u32 = 100;
 
 /// A hybrid implementation of blockchain.
 /// The performance is higher than `BlockTree`.
@@ -17,7 +17,7 @@ pub struct BlockChain
     unstable_chain: BlockTree,
 
     // The number of confirmation needed to become stable.
-    enough_confirmation: usize,
+    enough_confirmation: u32,
 }
 
 impl BlockChain
@@ -37,7 +37,7 @@ impl BlockChain
     }
 
     /// Sets the `enough_confirmation` field.
-    pub fn set_enough_confirmation(&mut self, conf: usize)
+    pub fn set_enough_confirmation(&mut self, conf: u32)
     {
         self.enough_confirmation = conf;
     }
@@ -104,9 +104,9 @@ pub struct ActiveChain<'a>
 
 impl<'a> ActiveChain<'a>
 {
-    pub fn len(&'a self) -> usize
+    pub fn len(&'a self) -> u32
     {
-        self.stabled.len() + self.unstabled.len()
+        self.stabled.len() as u32 + self.unstabled.len()
     }
 
     pub fn iter(&'a self) -> impl Iterator<Item = &'a BlockData> + DoubleEndedIterator

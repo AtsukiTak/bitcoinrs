@@ -17,12 +17,12 @@ impl<T: BlockDataLike> BlockAssociatedDataManager<T>
         BlockAssociatedDataManager { datas: VecDeque::new() }
     }
 
-    pub fn len(&self) -> usize
+    pub fn len(&self) -> u32
     {
-        self.datas.len()
+        self.datas.len() as u32
     }
 
-    pub fn minimum_height(&self) -> usize
+    pub fn minimum_height(&self) -> u32
     {
         self.datas.front().map(|b| b.height()).unwrap_or(0)
     }
@@ -37,7 +37,7 @@ impl<T: BlockDataLike> BlockAssociatedDataManager<T>
         }
     }
 
-    pub fn get_data_by_height(&self, height: usize) -> Option<&T>
+    pub fn get_data_by_height(&self, height: u32) -> Option<&T>
     {
         let start_height = self.datas.front()?.height();
 
@@ -46,7 +46,7 @@ impl<T: BlockDataLike> BlockAssociatedDataManager<T>
         }
 
         let idx = height - start_height;
-        self.datas.get(idx)
+        self.datas.get(idx as usize)
     }
 
     pub fn contains_data(&self, block: &BlockData) -> bool
@@ -120,7 +120,8 @@ impl<T: BlockDataLike> BlockAssociatedDataManager<T>
         let current_maximum_height = self.datas.back().unwrap().height();
         let new_minimum_height = datas[0].height();
         assert!(new_minimum_height <= current_maximum_height + 1);
-        self.datas.truncate(new_minimum_height - current_minimum_height);
+        self.datas
+            .truncate((new_minimum_height - current_minimum_height) as usize);
 
         self.datas.append(&mut datas.into());
     }
