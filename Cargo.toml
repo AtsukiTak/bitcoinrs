@@ -9,8 +9,10 @@ bitcoin = "0.14"
 futures = "0.1"
 
 log = "0.4"
-env_logger = "0.5"
 error-chain = "0.12"
+
+[dev-dependencies]
+env_logger = "0.5"
 
 [lib]
 name = "libyabitcoin"
