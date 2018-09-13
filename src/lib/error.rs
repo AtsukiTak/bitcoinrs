@@ -10,7 +10,7 @@ error_chain! {
     }
 
     errors {
-        HandshakeError(socket: ::peer::AsyncSocket) {
+        HandshakeError(socket: ::peer::Socket) {
             description("Error while handshaking")
             display("Error while handshaking on {:?}", socket)
         }

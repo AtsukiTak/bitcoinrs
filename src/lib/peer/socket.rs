@@ -1,5 +1,5 @@
 use std::net::SocketAddr;
-use bitcoin::network::{address::Address, constants::{Network, USER_AGENT}, message::NetworkMessage, socket::Socket,
+use bitcoin::network::{address::Address, constants::{Network, USER_AGENT}, message::NetworkMessage,
                        socket::Socket as BitcoinSocket};
 
 use futures::future::{result, Future};
@@ -8,9 +8,9 @@ use error::Error;
 
 
 /*
- * AsyncSocket
+ * Socket
  */
-pub struct AsyncSocket
+pub struct Socket
 {
     socket: BitcoinSocket,
     local_addr: Address,
@@ -18,18 +18,18 @@ pub struct AsyncSocket
     user_agent: &'static str,
 }
 
-impl AsyncSocket
+impl Socket
 {
-    pub fn open(addr: &SocketAddr, network: Network) -> impl Future<Item = AsyncSocket, Error = Error>
+    pub fn open(addr: &SocketAddr, network: Network) -> impl Future<Item = Socket, Error = Error>
     {
-        fn inner(addr: &SocketAddr, network: Network) -> Result<AsyncSocket, Error>
+        fn inner(addr: &SocketAddr, network: Network) -> Result<Socket, Error>
         {
-            let mut socket = Socket::new(network);
+            let mut socket = BitcoinSocket::new(network);
             socket.connect(format!("{}", addr.ip()).as_str(), addr.port())?;
 
             let local_addr = socket.sender_address()?;
             let remote_addr = socket.receiver_address()?;
-            Ok(AsyncSocket {
+            Ok(Socket {
                 socket,
                 local_addr,
                 remote_addr,
@@ -79,22 +79,22 @@ impl AsyncSocket
     }
 }
 
-impl ::std::fmt::Debug for AsyncSocket
+impl ::std::fmt::Debug for Socket
 {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
     {
         write!(
             f,
-            "AsyncSocket {{ remote: {:?}, local: {:?} }}",
+            "Socket {{ remote: {:?}, local: {:?} }}",
             self.remote_addr, self.local_addr
         )
     }
 }
 
-impl ::std::fmt::Display for AsyncSocket
+impl ::std::fmt::Display for Socket
 {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
     {
-        write!(f, "AsyncSocket to peer {:?}", self.remote_addr.address)
+        write!(f, "Socket to peer {:?}", self.remote_addr.address)
     }
 }

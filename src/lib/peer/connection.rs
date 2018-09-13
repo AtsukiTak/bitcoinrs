@@ -6,7 +6,7 @@ use bitcoin::blockdata::block::{Block, LoneBlockHeader};
 use bitcoin::util::hash::Sha256dHash;
 use futures::future::{loop_fn, result, Future, Loop};
 
-use peer::socket::AsyncSocket;
+use peer::socket::Socket;
 use error::{Error, ErrorKind};
 
 /// Connection between two peers.
@@ -16,7 +16,7 @@ use error::{Error, ErrorKind};
 #[derive(Debug)]
 pub struct Connection
 {
-    socket: AsyncSocket,
+    socket: Socket,
 
     remote_version_msg: VersionMessage,
     local_version_msg: VersionMessage,
@@ -38,7 +38,7 @@ pub enum IncomingMessage
 
 impl Connection
 {
-    pub fn initialize(socket: AsyncSocket, start_height: i32) -> impl Future<Item = Connection, Error = Error>
+    pub fn initialize(socket: Socket, start_height: i32) -> impl Future<Item = Connection, Error = Error>
     {
         // Send Version msg
         let local_version_msg = version_msg(&socket, start_height);
@@ -142,7 +142,7 @@ impl Connection
     }
 }
 
-fn version_msg(socket: &AsyncSocket, start_height: i32) -> VersionMessage
+fn version_msg(socket: &Socket, start_height: i32) -> VersionMessage
 {
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
     VersionMessage {
