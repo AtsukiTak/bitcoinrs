@@ -89,6 +89,11 @@ impl Socket
             (msg, socket)
         })
     }
+
+    pub fn split(self) -> (SendSocket, RecvSocket)
+    {
+        (self.send_socket, self.recv_socket)
+    }
 }
 
 
