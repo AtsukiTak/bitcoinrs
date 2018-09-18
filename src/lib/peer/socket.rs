@@ -81,10 +81,10 @@ impl Socket
     pub fn recv_msg(self) -> impl Future<Item = (NetworkMessage, Self), Error = Error>
     {
         let (s, r) = (self.send_socket, self.recv_socket);
-        r.recv_msg().map(|(msg, socket)| {
+        r.recv_msg().map(|(msg, r)| {
             let socket = Socket {
                 send_socket: s,
-                recv_socket: socket,
+                recv_socket: r,
             };
             (msg, socket)
         })
@@ -165,6 +165,28 @@ fn encode(msg: NetworkMessage, network: Network) -> Vec<u8>
     serialize(&msg).unwrap() // Never fail
 }
 
+impl ::std::fmt::Debug for SendSocket
+{
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
+    {
+        write!(
+            f,
+            "SendSocket {{ remote: {:?}, local: {:?} }}",
+            self.remote_addr(),
+            self.local_addr()
+        )
+    }
+}
+
+impl ::std::fmt::Display for SendSocket
+{
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
+    {
+        write!(f, "SendSocket to peer {:?}", self.remote_addr().address)
+    }
+}
+
+
 /* Receiving Half */
 
 impl RecvSocket
@@ -178,6 +200,21 @@ impl RecvSocket
             remote_addr,
             user_agent: USER_AGENT,
         }
+    }
+
+    pub fn local_addr(&self) -> &Address
+    {
+        &self.local_addr
+    }
+
+    pub fn remote_addr(&self) -> &Address
+    {
+        &self.remote_addr
+    }
+
+    pub fn user_agent(&self) -> &'static str
+    {
+        self.user_agent
     }
 
     pub fn recv_msg(self) -> impl Future<Item = (NetworkMessage, Self), Error = Error>
@@ -297,4 +334,25 @@ fn sha2_checksum(data: &[u8]) -> [u8; 4]
 {
     let checksum = Sha256dHash::from_data(data);
     [checksum[0], checksum[1], checksum[2], checksum[3]]
+}
+
+impl ::std::fmt::Debug for RecvSocket
+{
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
+    {
+        write!(
+            f,
+            "RecvSocket {{ remote: {:?}, local: {:?} }}",
+            self.remote_addr(),
+            self.local_addr()
+        )
+    }
+}
+
+impl ::std::fmt::Display for RecvSocket
+{
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
+    {
+        write!(f, "RecvSocket to peer {:?}", self.remote_addr().address)
+    }
 }
