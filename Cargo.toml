@@ -11,6 +11,9 @@ futures = "0.1"
 log = "0.4"
 error-chain = "0.12"
 
+tokio = "0.1"
+# tokio = { path = "../tokio" }
+
 [dev-dependencies]
 env_logger = "0.5"
 
