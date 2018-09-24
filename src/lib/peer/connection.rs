@@ -16,8 +16,22 @@ use error::{Error, ErrorKind};
 #[derive(Debug)]
 pub struct Connection
 {
-    socket: Socket,
+    send_conn: SendConnection,
+    recv_conn: RecvConnection,
+}
 
+#[derive(Debug)]
+pub struct SendConnection
+{
+    socket: SendSocket,
+    remote_version_msg: VersionMessage,
+    local_version_msg: VersionMessage,
+}
+
+#[derive(Debug)]
+pub struct RecvConnection
+{
+    socket: RecvSocket,
     remote_version_msg: VersionMessage,
     local_version_msg: VersionMessage,
 }
@@ -80,19 +94,7 @@ impl Connection
     /// - GetData
     pub fn send_msg(self, msg: OutgoingMessage) -> impl Future<Item = Self, Error = Error>
     {
-        let (socket, remote_v, local_v) = (self.socket, self.remote_version_msg, self.local_version_msg);
-        info!("Send {}", msg);
-        let msg = match msg {
-            OutgoingMessage::GetHeaders(m) => NetworkMessage::GetHeaders(m),
-            OutgoingMessage::GetData(m) => NetworkMessage::GetData(m),
-        };
-        socket.send_msg(msg).map(|socket| {
-            Connection {
-                socket,
-                remote_version_msg: remote_v,
-                local_version_msg: local_v,
-            }
-        })
+
     }
 
     /// Receive only below message.
@@ -139,6 +141,74 @@ impl Connection
 
             (msg, conn)
         })
+    }
+
+    pub fn split(self) -> (SendConnection, RecvConnection)
+    {
+        (self.send_conn, self.recv_conn)
+    }
+}
+
+impl SendConnection
+{
+    pub fn send_msg(self, msg: OutgoingMessage) -> impl Future<Item = Self, Error = Error>
+    {
+        let (socket, remote_v, local_v) = (self.socket, self.remote_version_msg, self.local_version_msg);
+        debug!("Send {}", msg);
+        let msg = match msg {
+            OutgoingMessage::GetHeaders(m) => NetworkMessage::GetHeaders(m),
+            OutgoingMessage::GetData(m) => NetworkMessage::GetData(m),
+        };
+        socket.send_msg(msg).map(|socket| {
+            SendConnection {
+                socket,
+                remote_version_msg: remote_v,
+                local_version_msg: local_v,
+            }
+        })
+    }
+}
+
+impl RecvConnection
+{
+    fn pong_and(self) -> impl Future<Item = (NetworkMessage, Self), Error = Error>
+    {
+        let (socket, remote_v, local_v) = (self.socket, self.remote_version_msg, self.local_version_msg);
+
+        loop_fn(socket, |socket| {
+            socket
+                .recv_msg()
+                .map_err(|e| Err(e)) // Future<Item = _, Error = Result<Error>>
+                .and_then(|(msg, socket)| {
+                    match msg {
+                        NetworkMessage::Ping(nonce) => Err(Ok((nonce, socket))),
+                        other => Ok(Loop::Break(other)),
+                    }
+                })
+                // Response to Ping message
+                .or_else(|e_or_nonce| {
+                    result(e_or_nonce).and_then(|(nonce, socket)| {
+                        socket
+                            .send_msg(NetworkMessage::Pong(nonce))
+                            .map(|socket| Loop::Continue(socket))
+                    })
+                })
+        }).map(|(msg, socket)| {
+            info!("Receive a new message {}", msg);
+
+            let conn = Connection {
+                socket,
+                remote_version_msg: remote_v,
+                local_version_msg: local_v,
+            };
+
+            (msg, conn)
+        })
+    }
+
+    fn recv_headers(self) -> impl Future<Item = (Vec<LoneBlockHeader>, Self), Error = Error>
+    {
+        self.recv_msg()
     }
 }
 

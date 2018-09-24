@@ -1,24 +1,106 @@
-use std::{io::Cursor, net::SocketAddr};
-use bitcoin::network::{address::Address, constants::{Network, SERVICES, USER_AGENT}, encodable::ConsensusDecodable,
+use std::io::Cursor;
+use bitcoin::network::{constants::Network, encodable::ConsensusDecodable,
                        message::{CommandString, NetworkMessage, RawNetworkMessage},
                        serialize::{serialize, Error as BitcoinSerializeError, RawDecoder}};
 use bitcoin::util::hash::Sha256dHash;
 
-use futures::future::{result, Future};
-use tokio::{io::{AsyncRead, ReadHalf, WriteHalf}, net::TcpStream};
+use futures::{Future, Sink, Stream};
+use tokio::{codec::{Encoder, FramedWrite}, executor::{DefaultExecutor, Executor, SpawnError},
+            io::{AsyncRead, AsyncWrite, ReadHalf, WriteHalf}};
+use bytes::BytesMut;
+use actix::{io::WriteHandler, prelude::*};
 
 use error::Error;
 
-
-/* Sending Half */
-
-pub fn send_msg<S>(socket: S, network: Network, msg: NetworkMessage) -> impl Future<Item = S, Error = IoError>
-where S: AsyncWrite
+pub struct Socket<S>
 {
-    debug!("Send a message {:?}", msg);
-    let serialized = encode(msg, network);
+    socket: S,
+    network: Network,
+}
 
-    ::tokio::io::write_all(socket, serialized).and_then(|(socket, _)| ::tokio::io::flush(socket))
+impl<S> Socket<S>
+{
+    pub fn new(socket: S, network: Network) -> Socket<S>
+    {
+        Socket { socket, network }
+    }
+
+    fn breakdown(self) -> (S, Network)
+    {
+        (self.socket, self.network)
+    }
+
+    pub fn split(self) -> (Socket<ReadHalf<S>>, Socket<WriteHalf<S>>)
+    where S: AsyncRead + AsyncWrite
+    {
+        let (socket, net) = self.breakdown();
+        let (r, w) = socket.split();
+        (Socket::new(r, net.clone()), Socket::new(w, net))
+    }
+
+    pub fn send_msg(self, msg: NetworkMessage) -> impl Future<Item = Self, Error = Error>
+    where S: AsyncWrite
+    {
+        debug!("Send a message {:?}", msg);
+        let (socket, network) = self.breakdown();
+        let serialized = encode(msg, network.clone());
+
+        ::tokio::io::write_all(socket, serialized)
+            .and_then(|(socket, _)| ::tokio::io::flush(socket))
+            .map_err(Error::from)
+            .map(move |socket| Socket::new(socket, network))
+    }
+
+    pub fn send_msg_sink(self) -> impl Sink<SinkItem = NetworkMessage, SinkError = Error>
+    where S: AsyncWrite
+    {
+        let (socket, network) = self.breakdown();
+        let encoder = BtcEncoder { network };
+        FramedWrite::new(socket, encoder)
+    }
+
+    pub fn into_framed_write<A, C>(self, ctx: &mut C) -> ::actix::io::FramedWrite<S, BtcEncoder>
+    where
+        S: AsyncWrite + 'static,
+        A: Actor<Context = C> + WriteHandler<Error>,
+        C: AsyncContext<A>,
+    {
+        let (socket, network) = self.breakdown();
+        let encoder = BtcEncoder { network };
+        ::actix::io::FramedWrite::new(socket, encoder, ctx)
+    }
+
+    pub fn recv_msg(self) -> impl Future<Item = (NetworkMessage, Self), Error = Error>
+    where S: AsyncRead
+    {
+        let (socket, network) = self.breakdown();
+        let network2 = network.clone();
+        let header_buf: [u8; RAW_NETWORK_MESSAGE_HEADER_SIZE] = [0; RAW_NETWORK_MESSAGE_HEADER_SIZE];
+
+        ::tokio::io::read_exact(socket, header_buf)
+            .map_err(Error::from)
+            .and_then(move |(socket, bytes)| {
+                let header = decode_msg_header(&bytes, &network)?;
+                Ok((socket, header))
+            })
+            .and_then(|(socket, header)| {
+                let mut buf = Vec::with_capacity(header.payload_size as usize);
+                buf.resize(header.payload_size as usize, 0);
+                ::tokio::io::read_exact(socket, buf)
+                    .map_err(Error::from)
+                    .map(|(socket, bytes)| (socket, bytes, header))
+            })
+            .and_then(move |(socket, bytes, header)| {
+                let msg = decode_and_check_msg_payload(&bytes, &header)?;
+                Ok((msg, Socket::new(socket, network2)))
+            })
+    }
+
+    pub fn recv_msg_stream(self) -> impl Stream<Item = NetworkMessage, Error = Error>
+    where S: AsyncRead
+    {
+        ::futures::stream::unfold(self, |s| Some(s.recv_msg()))
+    }
 }
 
 fn encode(msg: NetworkMessage, network: Network) -> Vec<u8>
@@ -30,35 +112,23 @@ fn encode(msg: NetworkMessage, network: Network) -> Vec<u8>
     serialize(&msg).unwrap() // Never fail
 }
 
-/* Receiving Half */
-
-pub fn recv_msg<S: AsyncRead>(socket: S) -> impl Future<Item = (NetworkMessage, S), Error = Error>
+pub struct BtcEncoder
 {
-    let header_buf: [u8; RAW_NETWORK_MESSAGE_HEADER_SIZE] = [0; RAW_NETWORK_MESSAGE_HEADER_SIZE];
-    ::tokio::io::read_exact(socket, header_buf)
-        .map_err(Error::from)
-        .and_then(move |(socket, bytes)| {
-            let header = decode_msg_header(&bytes, &network)?;
-            Ok((socket, header))
-        })
-        .and_then(|(socket, header)| {
-            let mut buf = Vec::with_capacity(header.payload_size as usize);
-            buf.resize(header.payload_size as usize, 0);
-            ::tokio::io::read_exact(socket, buf)
-                .map_err(Error::from)
-                .map(|(socket, bytes)| (socket, bytes, header))
-        })
-        .and_then(move |(socket, bytes, header)| {
-            let msg = decode_and_check_msg_payload(&bytes, &header, &network)?;
-            let socket = RecvSocket::new(socket, network, l_addr, r_addr);
-            Ok((msg, socket))
-        })
+    pub network: Network,
 }
 
-pub fn recv_msg_stream<S: AsyncRead>(socket: S) -> impl Stream<Item = NetworkMessage, Error = Error>
+impl Encoder for BtcEncoder
 {
-    ::futures::stream::unfold(socket, recv_msg)
+    type Item = NetworkMessage;
+    type Error = Error;
+    fn encode(&mut self, item: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error>
+    {
+        let encoded = encode(item, self.network.clone());
+        dst.extend_from_slice(encoded.as_slice());
+        Ok(())
+    }
 }
+
 
 const RAW_NETWORK_MESSAGE_HEADER_SIZE: usize = 24;
 
@@ -100,11 +170,7 @@ fn decode_msg_header(src: &[u8], network: &Network) -> Result<RawNetworkMessageH
 
 /// # Panic
 /// If length of `src` is not `header.payload_size`.
-fn decode_and_check_msg_payload(
-    src: &[u8],
-    header: &RawNetworkMessageHeader,
-    network: &Network,
-) -> Result<NetworkMessage, Error>
+fn decode_and_check_msg_payload(src: &[u8], header: &RawNetworkMessageHeader) -> Result<NetworkMessage, Error>
 {
     assert!(src.len() as u32 == header.payload_size);
 
@@ -152,25 +218,4 @@ fn sha2_checksum(data: &[u8]) -> [u8; 4]
 {
     let checksum = Sha256dHash::from_data(data);
     [checksum[0], checksum[1], checksum[2], checksum[3]]
-}
-
-impl ::std::fmt::Debug for RecvSocket
-{
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
-    {
-        write!(
-            f,
-            "RecvSocket {{ remote: {:?}, local: {:?} }}",
-            self.remote_addr(),
-            self.local_addr()
-        )
-    }
-}
-
-impl ::std::fmt::Display for RecvSocket
-{
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
-    {
-        write!(f, "RecvSocket to peer {:?}", self.remote_addr().address)
-    }
 }

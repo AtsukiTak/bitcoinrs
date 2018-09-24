@@ -11,13 +11,5 @@ error_chain! {
     }
 
     errors {
-        HandshakeError(socket: ::peer::Socket) {
-            description("Error while handshaking")
-            display("Error while handshaking on {:?}", socket)
-        }
-        MisbehaviorPeer(conn: ::peer::Connection) {
-            description("Misbehavior peer")
-            display("Peer {} does misbehavior", conn)
-        }
     }
 }
