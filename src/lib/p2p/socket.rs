@@ -114,6 +114,12 @@ impl Socket<TcpStream>
     {
         begin_handshake(self, start_height, services, relay)
     }
+
+    // TODO
+    pub fn reply_handshake(self) -> Result<Item = HandshakedSocket<TcpStream>, Error = Error>
+    {
+        unimplemented!();
+    }
 }
 
 impl<S> HandshakedSocket<S>
