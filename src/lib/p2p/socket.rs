@@ -16,6 +16,8 @@ pub struct Socket<S>
     network: Network,
 }
 
+pub struct HandshakedSocket<S>(Socket<S>);
+
 impl<S> Socket<S>
 {
     pub fn new(socket: S, network: Network) -> Socket<S>
@@ -93,6 +95,46 @@ impl<S> Socket<S>
     where S: AsyncRead
     {
         ::futures::stream::unfold(self, |s| Some(s.recv_msg()))
+    }
+}
+
+impl<S> HandshakedSocket<S>
+{
+    pub fn split(self) -> (HandshakedSocket<ReadHalf<S>>, HandshakedSocket<WriteHalf<S>>)
+    where S: AsyncRead + AsyncWrite
+    {
+        let (r, w) = self.0.split();
+        (HandshakedSocket(r), HandshakedSocket(w))
+    }
+
+    pub fn shutdown(self) -> Shutdown<S>
+    where S: AsyncWrite
+    {
+        self.0.shutdown()
+    }
+
+    pub fn send_msg(self, msg: NetworkMessage) -> impl Future<Item = Self, Error = Error>
+    where S: AsyncWrite
+    {
+        self.0.send_msg(msg).map(|s| HandshakedSocket(s))
+    }
+
+    pub fn send_msg_sink(self) -> impl Sink<SinkItem = NetworkMessage, SinkError = Error>
+    where S: AsyncWrite
+    {
+        self.0.send_msg_sink()
+    }
+
+    pub fn recv_msg(self) -> impl Future<Item = (NetworkMessage, Self), Error = Error>
+    where S: AsyncRead
+    {
+        self.0.recv_msg().map(|(msg, socket)| (msg, HandshakedSocket(socket)))
+    }
+
+    pub fn recv_msg_stream(self) -> impl Stream<Item = NetworkMessage, Error = Error>
+    where S: AsyncRead
+    {
+        self.0.recv_msg_stream()
     }
 }
 
