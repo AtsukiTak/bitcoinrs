@@ -10,7 +10,7 @@ use futures::{Future, Stream};
 use tokio::{io::WriteHalf, net::TcpStream};
 use actix::prelude::*;
 
-use p2p::socket::Socket;
+use p2p::HandshakedSocket;
 use error::Error;
 
 const DEFAULT_ADDRS_CAPACITY: usize = 8;
@@ -73,7 +73,7 @@ pub struct Disconnect();
 pub struct Connection
 {
     // it should not be None except during waiting to complete sending
-    write_socket: Option<Socket<WriteHalf<TcpStream>>>,
+    write_socket: Option<HandshakedSocket<WriteHalf<TcpStream>>>,
     socket_stream_handle: SpawnHandle,
 
     waiting_blocks: Option<WaitingBlocks>,
@@ -83,17 +83,6 @@ pub struct Connection
     addrs: Vec<(u32, Address)>,
 }
 
-/// Establish a new outgoing connection.
-pub fn create_outgoing_connection(socket: Socket<TcpStream>, ctx: &mut Context<Connection>) -> Connection
-{
-    let (read_socket, write_socket) = socket.split();
-
-    let msg_stream = read_socket.recv_msg_stream().map(|m| P2PMessage(m));
-    let socket_stream_handle = ctx.add_stream(msg_stream);
-
-    Connection::new(write_socket, socket_stream_handle)
-}
-
 impl Actor for Connection
 {
     type Context = Context<Self>;
@@ -101,7 +90,19 @@ impl Actor for Connection
 
 impl Connection
 {
-    fn new(write_socket: Socket<WriteHalf<TcpStream>>, socket_stream_handle: SpawnHandle) -> Connection
+    pub fn start_actor(socket: HandshakedSocket<TcpStream>) -> Addr<Self>
+    {
+        Connection::create(move |ctx| {
+            let (read_socket, write_socket) = socket.split();
+
+            let msg_stream = read_socket.recv_msg_stream().map(|m| P2PMessage(m));
+            let socket_stream_handle = ctx.add_stream(msg_stream);
+
+            Connection::new(write_socket, socket_stream_handle)
+        })
+    }
+
+    fn new(write_socket: HandshakedSocket<WriteHalf<TcpStream>>, socket_stream_handle: SpawnHandle) -> Connection
     {
         Connection {
             write_socket: Some(write_socket),
