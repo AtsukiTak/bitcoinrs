@@ -10,12 +10,14 @@ use bytes::BytesMut;
 
 use error::Error;
 
+#[derive(Debug)]
 pub struct Socket<S>
 {
     socket: S,
     network: Network,
 }
 
+#[derive(Debug)]
 pub struct HandshakedSocket<S>(Socket<S>);
 
 impl<S> Socket<S>
