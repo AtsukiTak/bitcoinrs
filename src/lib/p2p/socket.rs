@@ -5,10 +5,8 @@ use bitcoin::network::{constants::Network, encodable::ConsensusDecodable,
 use bitcoin::util::hash::Sha256dHash;
 
 use futures::{Future, Sink, Stream};
-use tokio::{codec::{Encoder, FramedWrite}, executor::{DefaultExecutor, Executor, SpawnError},
-            io::{AsyncRead, AsyncWrite, ReadHalf, WriteHalf}};
+use tokio::{codec::{Encoder, FramedWrite}, io::{shutdown, AsyncRead, AsyncWrite, ReadHalf, Shutdown, WriteHalf}};
 use bytes::BytesMut;
-use actix::{io::WriteHandler, prelude::*};
 
 use error::Error;
 
@@ -38,6 +36,12 @@ impl<S> Socket<S>
         (Socket::new(r, net.clone()), Socket::new(w, net))
     }
 
+    pub fn shutdown(self) -> Shutdown<S>
+    where S: AsyncWrite
+    {
+        shutdown(self.socket)
+    }
+
     pub fn send_msg(self, msg: NetworkMessage) -> impl Future<Item = Self, Error = Error>
     where S: AsyncWrite
     {
@@ -57,17 +61,6 @@ impl<S> Socket<S>
         let (socket, network) = self.breakdown();
         let encoder = BtcEncoder { network };
         FramedWrite::new(socket, encoder)
-    }
-
-    pub fn into_framed_write<A, C>(self, ctx: &mut C) -> ::actix::io::FramedWrite<S, BtcEncoder>
-    where
-        S: AsyncWrite + 'static,
-        A: Actor<Context = C> + WriteHandler<Error>,
-        C: AsyncContext<A>,
-    {
-        let (socket, network) = self.breakdown();
-        let encoder = BtcEncoder { network };
-        ::actix::io::FramedWrite::new(socket, encoder, ctx)
     }
 
     pub fn recv_msg(self) -> impl Future<Item = (NetworkMessage, Self), Error = Error>
@@ -112,7 +105,7 @@ fn encode(msg: NetworkMessage, network: Network) -> Vec<u8>
     serialize(&msg).unwrap() // Never fail
 }
 
-pub struct BtcEncoder
+struct BtcEncoder
 {
     pub network: Network,
 }
