@@ -6,6 +6,6 @@ pub use self::connection::Connection;
 
 pub mod msg
 {
-    pub use self::connection::{BlockResponse, Disconnect, GetBlockRequest, GetHeadersRequest, HeadersResponse,
+    pub use super::connection::{BlockResponse, Disconnect, GetBlocksRequest, GetHeadersRequest, HeadersResponse,
                                PublishInv, SubscribeInv};
 }
