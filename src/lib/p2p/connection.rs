@@ -8,7 +8,7 @@ use bitcoin::BitcoinHash;
 
 use futures::{Future, Stream};
 use tokio::{io::WriteHalf, net::TcpStream};
-use actix::prelude::*;
+use actix::{prelude::*, msgs::StartActor};
 
 use p2p::HandshakedSocket;
 use error::Error;
@@ -92,14 +92,26 @@ impl Connection
 {
     pub fn start_actor(socket: HandshakedSocket<TcpStream>) -> Addr<Self>
     {
-        Connection::create(move |ctx| {
-            let (read_socket, write_socket) = socket.split();
+        <Connection as Actor>::create(move |ctx| Connection::create(socket, ctx))
+    }
 
-            let msg_stream = read_socket.recv_msg_stream().map(|m| P2PMessage(m));
-            let socket_stream_handle = ctx.add_stream(msg_stream);
+    pub fn start_actor_on(
+        socket: HandshakedSocket<TcpStream>,
+        arbiter: Addr<Arbiter>,
+    ) -> Result<Addr<Self>, MailboxError>
+    {
+        let start_actor = StartActor::new(move |ctx| Connection::create(socket, ctx));
+        arbiter.send(start_actor).wait()
+    }
 
-            Connection::new(write_socket, socket_stream_handle)
-        })
+    fn create(socket: HandshakedSocket<TcpStream>, ctx: &mut Context<Self>) -> Connection
+    {
+        let (read_socket, write_socket) = socket.split();
+
+        let msg_stream = read_socket.recv_msg_stream().map(|m| P2PMessage(m));
+        let socket_stream_handle = ctx.add_stream(msg_stream);
+
+        Connection::new(write_socket, socket_stream_handle)
     }
 
     fn new(write_socket: HandshakedSocket<WriteHalf<TcpStream>>, socket_stream_handle: SpawnHandle) -> Connection

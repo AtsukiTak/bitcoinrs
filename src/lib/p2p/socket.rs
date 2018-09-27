@@ -116,7 +116,7 @@ impl Socket<TcpStream>
     }
 
     // TODO
-    pub fn reply_handshake(self) -> Result<Item = HandshakedSocket<TcpStream>, Error = Error>
+    pub fn reply_handshake(self) -> Result<HandshakedSocket<TcpStream>, Error>
     {
         unimplemented!();
     }
