@@ -1,14 +1,17 @@
-use std::io::Cursor;
-use bitcoin::network::{constants::Network, encodable::ConsensusDecodable,
-                       message::{CommandString, NetworkMessage, RawNetworkMessage},
+use std::{io::Cursor, time::{SystemTime, UNIX_EPOCH}};
+use bitcoin::network::{address::Address, constants::{Network, PROTOCOL_VERSION}, encodable::ConsensusDecodable,
+                       message::{CommandString, NetworkMessage, RawNetworkMessage}, message_network::VersionMessage,
                        serialize::{serialize, Error as BitcoinSerializeError, RawDecoder}};
 use bitcoin::util::hash::Sha256dHash;
 
-use futures::{Future, Sink, Stream};
-use tokio::{codec::{Encoder, FramedWrite}, io::{shutdown, AsyncRead, AsyncWrite, ReadHalf, Shutdown, WriteHalf}};
+use futures::{Future, IntoFuture, Sink, Stream};
+use tokio::{codec::{Encoder, FramedWrite}, io::{shutdown, AsyncRead, AsyncWrite, ReadHalf, Shutdown, WriteHalf},
+            net::TcpStream};
 use bytes::BytesMut;
 
-use error::Error;
+use error::{Error, ErrorKind};
+
+pub const USER_AGENT: &str = "bitcoinrs v0.0";
 
 #[derive(Debug)]
 pub struct Socket<S>
@@ -100,6 +103,19 @@ impl<S> Socket<S>
     }
 }
 
+impl Socket<TcpStream>
+{
+    pub fn begin_handshake(
+        self,
+        start_height: i32,
+        services: u64,
+        relay: bool,
+    ) -> impl Future<Item = HandshakedSocket<TcpStream>, Error = Error>
+    {
+        begin_handshake(self, start_height, services, relay)
+    }
+}
+
 impl<S> HandshakedSocket<S>
 {
     pub fn split(self) -> (HandshakedSocket<ReadHalf<S>>, HandshakedSocket<WriteHalf<S>>)
@@ -138,6 +154,64 @@ impl<S> HandshakedSocket<S>
     {
         self.0.recv_msg_stream()
     }
+}
+
+pub fn begin_handshake(
+    socket: Socket<TcpStream>,
+    start_height: i32,
+    services: u64,
+    relay: bool,
+) -> impl Future<Item = HandshakedSocket<TcpStream>, Error = Error>
+{
+    version_msg(&socket.socket, start_height, services, relay)
+        .into_future()
+        .and_then(|v| socket.send_msg(NetworkMessage::Version(v)))
+        .and_then(|socket| socket.recv_msg())
+        .and_then(|(msg, socket)| {
+            match msg {
+                NetworkMessage::Version(v) => Ok((v, socket)),
+                msg => {
+                    info!("Fail to handshake. Expect Version msg but found {:?}", msg);
+                    Err(Error::from(ErrorKind::MisbehavePeer))
+                },
+            }
+        })
+        .and_then(|(remote_v, socket)| check_remote_version_msg(remote_v).map(|()| socket))
+        .and_then(|socket| socket.send_msg(NetworkMessage::Verack))
+        .and_then(|socket| socket.recv_msg())
+        .and_then(|(msg, socket)| {
+            match msg {
+                NetworkMessage::Verack => Ok(HandshakedSocket(socket)),
+                msg => {
+                    info!("Fail to handshake. Expect Verack msg but found {:?}", msg);
+                    Err(Error::from(ErrorKind::MisbehavePeer))
+                },
+            }
+        })
+}
+
+fn version_msg(socket: &TcpStream, start_height: i32, services: u64, relay: bool) -> Result<VersionMessage, Error>
+{
+    let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+    let sender = Address::new(&socket.local_addr()?, services.clone());
+    let receiver = Address::new(&socket.peer_addr()?, services.clone());
+    Ok(VersionMessage {
+        version: PROTOCOL_VERSION,
+        services,
+        timestamp: ts,
+        receiver,
+        sender,
+        nonce: 0,
+        user_agent: USER_AGENT.into(),
+        start_height,
+        relay,
+    })
+}
+
+fn check_remote_version_msg(_version: VersionMessage) -> Result<(), Error>
+{
+    // Currently does not check anything
+    Ok(())
 }
 
 fn encode(msg: NetworkMessage, network: Network) -> Vec<u8>

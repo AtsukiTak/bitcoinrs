@@ -1,7 +1,7 @@
 mod socket;
 mod connection;
 
-pub use self::socket::{HandshakedSocket, Socket};
+pub use self::socket::{HandshakedSocket, Socket, begin_handshake};
 pub use self::connection::Connection;
 
 pub mod msg
