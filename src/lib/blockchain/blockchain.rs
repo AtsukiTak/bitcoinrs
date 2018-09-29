@@ -1,4 +1,4 @@
-use std::{cell::{Ref, RefCell}, collections::VecDeque, sync::{Arc, Weak}};
+use std::{cell::{Ref, RefCell}, sync::{Arc, Weak}};
 
 use bitcoin::util::hash::Sha256dHash;
 use bitcoin::blockdata::block::BlockHeader;
@@ -12,12 +12,12 @@ use super::{BlockData, NotFoundPrevBlock};
 pub struct BlockChain
 {
     // Nodes of current active chain
-    active_nodes: VecDeque<Arc<RefCell<Node>>>,
+    active_nodes: Vec<Arc<RefCell<Node>>>,
 }
 
 pub struct ActiveChain<'a>
 {
-    nodes: &'a VecDeque<Arc<RefCell<Node>>>,
+    nodes: &'a Vec<Arc<RefCell<Node>>>,
 }
 
 impl BlockChain
@@ -30,8 +30,8 @@ impl BlockChain
     pub fn with_start(block_data: BlockData) -> BlockChain
     {
         let node = Node::new(block_data);
-        let mut vec = VecDeque::new();
-        vec.push_back(node);
+        let mut vec = Vec::new();
+        vec.push(node);
         BlockChain { active_nodes: vec }
     }
 
@@ -143,7 +143,7 @@ impl BlockChain
         // If new_node is a new tip, replace
         let tail_block_height = {
             // immutable borrow start
-            self.active_nodes.back().unwrap().borrow().block.height()
+            self.active_nodes.last().unwrap().borrow().block.height()
             // immutable borrow end
         };
         if tail_block_height < new_block_height {
@@ -197,11 +197,11 @@ impl BlockChain
         match Node::borrow_then_get_prev(&node_ptr) {
             None => panic!("node_ptr must have prev node"),
             Some(prev_node) => {
-                if !Arc::ptr_eq(&prev_node, self.active_nodes.back().unwrap()) {
+                if !Arc::ptr_eq(&prev_node, self.active_nodes.last().unwrap()) {
                     self.borrow_then_append_nodes(prev_node);
                 }
                 // Now, `prev_node == active_chain.back().unwrap()`
-                self.active_nodes.push_back(node_ptr);
+                self.active_nodes.push(node_ptr);
             },
         }
     }
