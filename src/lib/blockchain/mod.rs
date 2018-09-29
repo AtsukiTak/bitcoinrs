@@ -1,12 +1,8 @@
 mod blockchain;
-mod blocktree;
 mod block;
-mod data_manager;
 
 pub use self::blockchain::BlockChain;
-pub use self::blocktree::BlockTree;
 pub use self::block::{BlockData, BlockDataLike, FullBlockData};
-pub use self::data_manager::BlockAssociatedDataManager;
 
 use bitcoin::blockdata::block::BlockHeader;
 

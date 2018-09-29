@@ -1,23 +1,22 @@
+use std::{cell::{Ref, RefCell}, collections::VecDeque, sync::{Arc, Weak}};
+
+use bitcoin::util::hash::Sha256dHash;
 use bitcoin::blockdata::block::BlockHeader;
 use bitcoin::network::{constants::Network, serialize::BitcoinHash};
-use bitcoin::util::hash::Sha256dHash;
 
-use super::{blocktree, BlockData, BlockTree, NotFoundPrevBlock};
+use super::{BlockData, NotFoundPrevBlock};
 
-const DEFAULT_ENOUGH_CONF: u32 = 100;
 
-/// A hybrid implementation of blockchain.
-/// The performance is higher than `BlockTree`.
-/// To achieve such performance, this implementation is based on tiny assumption;
-/// the block which has enough confirmation will never be changed.
+/// A honest implementation of blockchain.
 pub struct BlockChain
 {
-    stable_chain: StableBlockChain,
+    // Nodes of current active chain
+    active_nodes: VecDeque<Arc<RefCell<Node>>>,
+}
 
-    unstable_chain: BlockTree,
-
-    // The number of confirmation needed to become stable.
-    enough_confirmation: u32,
+pub struct ActiveChain<'a>
+{
+    nodes: &'a VecDeque<Arc<RefCell<Node>>>,
 }
 
 impl BlockChain
@@ -27,109 +26,70 @@ impl BlockChain
         BlockChain::with_start(BlockData::genesis(network))
     }
 
-    pub fn with_start(block: BlockData) -> BlockChain
+    pub fn with_start(block_data: BlockData) -> BlockChain
     {
-        BlockChain {
-            stable_chain: StableBlockChain::new(),
-            unstable_chain: BlockTree::with_start(block),
-            enough_confirmation: DEFAULT_ENOUGH_CONF,
-        }
+        let node = Node::new(block_data);
+        let mut vec = VecDeque::new();
+        vec.push_back(node);
+        BlockChain { active_nodes: vec }
     }
 
-    /// Sets the `enough_confirmation` field.
-    pub fn set_enough_confirmation(&mut self, conf: u32)
-    {
-        self.enough_confirmation = conf;
-    }
-
-    /// Try to add a new block.
     pub fn try_add(&mut self, block_header: BlockHeader) -> Result<(), NotFoundPrevBlock>
     {
-        self.unstable_chain.try_add(block_header)?;
-
-        while self.unstable_chain.active_chain().len() > self.enough_confirmation {
-            let stabled_block = self.unstable_chain.pop_head_unchecked();
-            self.stable_chain.add_block(stabled_block);
-        }
-
-        Ok(())
+        self.try_add_inner(block_header)
     }
 
     pub fn active_chain(&self) -> ActiveChain
     {
         ActiveChain {
-            stabled: self.stable_chain.as_vec(),
-            unstabled: self.unstable_chain.active_chain(),
+            nodes: &self.active_nodes,
         }
     }
 }
 
-impl ::std::fmt::Debug for BlockChain
-{
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), ::std::fmt::Error>
-    {
-        write!(f, "BlockChain{{ .. }}")
-    }
-}
-
-/// Chain of blocks which is confirmed enough.
-struct StableBlockChain
-{
-    blocks: Vec<BlockData>,
-}
-
-impl StableBlockChain
-{
-    fn new() -> StableBlockChain
-    {
-        StableBlockChain { blocks: Vec::new() }
-    }
-
-    fn add_block(&mut self, block: BlockData)
-    {
-        self.blocks.push(block);
-    }
-
-    fn as_vec(&self) -> &Vec<BlockData>
-    {
-        &self.blocks
-    }
-}
-
-pub struct ActiveChain<'a>
-{
-    stabled: &'a Vec<BlockData>,
-    unstabled: blocktree::ActiveChain<'a>,
-}
-
 impl<'a> ActiveChain<'a>
 {
-    pub fn len(&'a self) -> u32
+    pub fn len(&self) -> u32
     {
-        self.stabled.len() as u32 + self.unstabled.len()
+        self.nodes.len() as u32
     }
 
-    pub fn iter(&'a self) -> impl Iterator<Item = &'a BlockData> + DoubleEndedIterator
-    {
-        let stabled_iter = self.stabled.iter();
-        let unstabled_iter = self.unstabled.iter();
-        stabled_iter.chain(unstabled_iter)
-    }
-
-    /// Get latest block
+    /// Get the latest block
     ///
-    /// The key of this function is `unwrap`; since there are always start block at least,
-    /// we can call `unwrap`.
-    pub fn latest_block(&'a self) -> &'a BlockData
+    /// Note that there always be latest block.
+    pub fn latest_block<'b>(&'b self) -> Ref<BlockData>
     {
-        self.iter().rev().next().unwrap() // since there are always start block
+        self.iter().rev().next().unwrap()
     }
 
-    /// Get block whose hash is exactly same with given hash.
-    pub fn get_block(&'a self, hash: Sha256dHash) -> Option<&'a BlockData>
+    /// Get the specified height block
+    pub fn get_block<'b>(&'b self, height: u32) -> Option<Ref<'b, BlockData>>
     {
-        self.iter().find(move |b| b.bitcoin_hash() == hash)
+        let start_height = self.iter().next().unwrap().height;
+        if height < start_height {
+            return None;
+        }
+        self.nodes
+            .get((height - start_height) as usize)
+            .map(|node| Ref::map(node.as_ref().borrow(), |n| &n.block))
     }
+
+    /// Check whether active chain contains given block or not.
+    pub fn contains(&self, block: &BlockData) -> bool
+    {
+        match self.get_block(block.height) {
+            None => false,
+            Some(b) => b.bitcoin_hash() == block.bitcoin_hash(),
+        }
+    }
+
+    pub fn iter<'b>(&'b self) -> impl Iterator<Item = Ref<'b, BlockData>> + DoubleEndedIterator
+    {
+        self.nodes
+            .iter()
+            .map(|node| Ref::map(node.as_ref().borrow(), |n| &n.block))
+    }
+
 
     /// Get locator block's hash iterator.
     ///
@@ -138,18 +98,189 @@ impl<'a> ActiveChain<'a>
     /// It should be improved in future.
     /// Bitcoin core's implementation is here.
     /// https://github.com/bitcoin/bitcoin/blob/master/src/chain.cpp#L23
-    pub fn locator_hashes(&'a self) -> impl Iterator<Item = Sha256dHash> + 'a
+    pub fn locator_hashes<'b>(&'b self) -> impl Iterator<Item = Sha256dHash> + 'b
     {
+        // TODO improve this algo
         self.iter().rev().take(10).map(|b| b.bitcoin_hash())
     }
 
-    pub fn locator_hashes_vec(&'a self) -> Vec<Sha256dHash>
+    /// Get locator block's hash vec.
+    pub fn locator_hashes_vec(&self) -> Vec<Sha256dHash>
     {
         let mut vec = Vec::with_capacity(10);
         for hash in self.locator_hashes() {
             vec.push(hash);
         }
         vec
+    }
+}
+
+impl BlockChain
+{
+    fn try_add_inner(&mut self, block_header: BlockHeader) -> Result<(), NotFoundPrevBlock>
+    {
+        /* logic starts from here */
+
+        // Search prev block of given block
+        let prev_node = match self.borrow_then_find_node(block_header.prev_blockhash) {
+            None => return Err(NotFoundPrevBlock(block_header)),
+            Some(node) => node,
+        };
+
+        // Generates `BlockData`.
+        let prev_block_height = {
+            // immutable borrow start
+            prev_node.borrow().block.height()
+            // immutable borrow end
+        };
+        let new_block_height = prev_block_height + 1;
+        let new_block_data = BlockData::new(block_header, new_block_height);
+
+        // Append a new block to back of `prev_node`.
+        let new_node = Node::borrow_mut_then_append_block(&prev_node, new_block_data);
+
+        // If new_node is a new tip, replace
+        let tail_block_height = {
+            // immutable borrow start
+            self.active_nodes.back().unwrap().borrow().block.height()
+            // immutable borrow end
+        };
+        if tail_block_height < new_block_height {
+            // Rewinds current active chain
+            let last_common_node = self.borrow_then_find_last_common(&new_node);
+            let rewind_height = {
+                // immutable borrow start
+                last_common_node.borrow().block.height()
+                // immutable borrow end
+            };
+            self.borrow_then_rewind_active_chain(rewind_height);
+            self.borrow_then_append_nodes(new_node);
+        }
+
+        Ok(())
+    }
+
+    // Returns last common `Node` between `active_chain` and `node_ptr`'s branch.
+    fn borrow_then_find_last_common(&self, node_ptr: &Arc<RefCell<Node>>) -> Arc<RefCell<Node>>
+    {
+        fn inner(active_chain: ActiveChain, node_ptr: &Arc<RefCell<Node>>) -> Arc<RefCell<Node>>
+        {
+            let node = node_ptr.borrow();
+            if active_chain.contains(&node.block) {
+                return node_ptr.clone();
+            }
+            match Node::borrow_then_get_prev(node_ptr) {
+                None => unreachable!(), // because independent branch never exist.
+                Some(prev) => inner(active_chain, &prev),
+            }
+        }
+
+        inner(self.active_chain(), node_ptr)
+    }
+
+    // # Note
+    // Rewinded `active_chain` contains a node whose height is `rewind_height`.
+    // Length of `active_chain` **MUST** be long enough.
+    fn borrow_then_rewind_active_chain(&mut self, rewind_height: u32)
+    {
+        let start_height = self.active_nodes[0].borrow().block.height();
+        let rewind_idx = rewind_height - start_height + 1;
+        self.active_nodes.truncate(rewind_idx as usize);
+    }
+
+    /// Append nodes of given `node_ptr`'s branch.
+    /// # Note
+    /// The last active node **MUST** be on `node_ptr`'s branch.
+    fn borrow_then_append_nodes(&mut self, node_ptr: Arc<RefCell<Node>>)
+    {
+        match Node::borrow_then_get_prev(&node_ptr) {
+            None => panic!("node_ptr must have prev node"),
+            Some(prev_node) => {
+                if !Arc::ptr_eq(&prev_node, self.active_nodes.back().unwrap()) {
+                    self.borrow_then_append_nodes(prev_node);
+                }
+                // Now, `prev_node == active_chain.back().unwrap()`
+                self.active_nodes.push_back(node_ptr);
+            },
+        }
+    }
+
+    /// Find a block whose bitcoin_hash is equal to given hash
+    /// Depth first search.
+    fn borrow_then_find_node(&self, hash: Sha256dHash) -> Option<Arc<RefCell<Node>>>
+    {
+        fn inner(node_ptr: &Arc<RefCell<Node>>, hash: Sha256dHash) -> Option<Arc<RefCell<Node>>>
+        {
+            let node = node_ptr.borrow();
+
+            // Depth first search
+            for next in node.nexts.iter() {
+                if let Some(node) = inner(next, hash) {
+                    return Some(node);
+                }
+            }
+
+            if node.block.bitcoin_hash() == hash {
+                return Some(node_ptr.clone());
+            }
+
+            None
+        }
+
+        inner(&self.active_nodes[0], hash)
+    }
+}
+
+#[derive(Debug)]
+/// Node may be strongly referenced from
+///
+/// 1. parent node as `next` node
+/// 2. BlockChain as `active` node
+///
+/// During one of these reference alive, Node never be dropped.
+///
+/// So if `self.prev.unwrap().upgrade()` returns `None`,
+/// it means that above two reference does not alive,
+/// i.e. self is head node.
+struct Node
+{
+    prev: Weak<RefCell<Node>>,
+    nexts: Vec<Arc<RefCell<Node>>>,
+    block: BlockData,
+}
+
+impl Node
+{
+    fn new(block: BlockData) -> Arc<RefCell<Node>>
+    {
+        let new_node = Node {
+            prev: Weak::new(),
+            nexts: vec![],
+            block,
+        };
+        Arc::new(RefCell::new(new_node))
+    }
+
+    /// # Note
+    /// Inside this function, `node.borrow_mut()` is called.
+    /// So caller **MUTS** take care of not calling `node.borrow_mut()` in parent scope.
+    fn borrow_mut_then_append_block(node: &Arc<RefCell<Node>>, block: BlockData) -> Arc<RefCell<Node>>
+    {
+        let new_node = Node {
+            prev: Arc::downgrade(node),
+            nexts: vec![],
+            block,
+        };
+        let new_node_ptr = Arc::new(RefCell::new(new_node));
+
+        node.borrow_mut().nexts.push(new_node_ptr.clone());
+
+        new_node_ptr
+    }
+
+    fn borrow_then_get_prev(node: &Arc<RefCell<Node>>) -> Option<Arc<RefCell<Node>>>
+    {
+        node.borrow().prev.upgrade()
     }
 }
 
@@ -173,50 +304,21 @@ mod tests
     }
 
     #[test]
-    fn blockchainmut_try_add()
+    fn blocktree_try_add()
     {
         let start_block_header = dummy_block_header(Sha256dHash::default());
         let next_block_header = dummy_block_header(start_block_header.bitcoin_hash());
         let start_block = BlockData::new(start_block_header, 0);
-        let mut blockchain = BlockChain::with_start(start_block);
+        let mut blocktree = BlockChain::with_start(start_block);
 
-        assert_eq!(blockchain.active_chain().len(), 1);
+        assert_eq!(blocktree.active_chain().len(), 1);
 
-        blockchain.try_add(next_block_header).unwrap(); // Should success.
+        blocktree.try_add(next_block_header).unwrap(); // Should success.
 
-        assert_eq!(blockchain.active_chain().len(), 2);
+        assert_eq!(blocktree.active_chain().len(), 2);
 
-        let active_chain = blockchain.active_chain();
-        let headers: Vec<_> = active_chain.iter().map(|b| b.header).collect();
+        let active_chain = blocktree.active_chain();
+        let headers: Vec<_> = active_chain.iter().map(|block| block.header).collect();
         assert_eq!(headers, vec![start_block_header, next_block_header]);
-    }
-
-    #[test]
-    fn add_8_blocks_to_blockchainmut()
-    {
-        let block1 = dummy_block_header(Sha256dHash::default());
-        let block2 = dummy_block_header(block1.bitcoin_hash());
-        let block3 = dummy_block_header(block2.bitcoin_hash());
-        let block4 = dummy_block_header(block3.bitcoin_hash());
-        let block5 = dummy_block_header(block4.bitcoin_hash());
-        let block6 = dummy_block_header(block5.bitcoin_hash());
-        let block7 = dummy_block_header(block6.bitcoin_hash());
-        let block8 = dummy_block_header(block7.bitcoin_hash());
-
-        let block1_data = BlockData::new(block1, 0);
-
-        let mut blockchain = BlockChain::with_start(block1_data);
-        blockchain.set_enough_confirmation(7);
-
-        blockchain.try_add(block2).unwrap();
-        blockchain.try_add(block3).unwrap();
-        blockchain.try_add(block4).unwrap();
-        blockchain.try_add(block5).unwrap();
-        blockchain.try_add(block6).unwrap();
-        blockchain.try_add(block7).unwrap();
-        blockchain.try_add(block8).unwrap();
-
-        assert_eq!(blockchain.stable_chain.blocks.len(), 1);
-        assert_eq!(blockchain.unstable_chain.active_chain().len(), 7);
     }
 }
