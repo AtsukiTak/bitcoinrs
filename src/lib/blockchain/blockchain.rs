@@ -8,6 +8,7 @@ use super::{BlockData, NotFoundPrevBlock};
 
 
 /// A honest implementation of blockchain.
+#[derive(Clone)]
 pub struct BlockChain
 {
     // Nodes of current active chain
