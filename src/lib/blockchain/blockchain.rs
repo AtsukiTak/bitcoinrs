@@ -61,6 +61,9 @@ impl Clone for BlockChain
     }
 }
 
+/// Since `Rc` is only used internally, `BlockChain` can implement `Send`.
+unsafe impl Send for BlockChain {}
+
 impl<'a> ActiveChain<'a>
 {
     pub fn len(&self) -> u32
