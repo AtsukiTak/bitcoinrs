@@ -1,4 +1,4 @@
-use std::{cell::{Ref, RefCell}, sync::{Arc, Weak}};
+use std::{cell::{Ref, RefCell}, rc::{Rc, Weak}};
 
 use bitcoin::util::hash::Sha256dHash;
 use bitcoin::blockdata::block::BlockHeader;
@@ -8,16 +8,15 @@ use super::{BlockData, NotFoundPrevBlock};
 
 
 /// A honest implementation of blockchain.
-#[derive(Clone)]
 pub struct BlockChain
 {
     // Nodes of current active chain
-    active_nodes: Vec<Arc<RefCell<Node>>>,
+    active_nodes: Vec<Rc<RefCell<Node>>>,
 }
 
 pub struct ActiveChain<'a>
 {
-    nodes: &'a Vec<Arc<RefCell<Node>>>,
+    nodes: &'a Vec<Rc<RefCell<Node>>>,
 }
 
 impl BlockChain
@@ -48,6 +47,20 @@ impl BlockChain
     }
 }
 
+impl Clone for BlockChain
+{
+    fn clone(&self) -> Self
+    {
+        let ac = self.active_chain();
+        let mut blocks = ac.iter();
+        let mut blockchain = BlockChain::with_start(blocks.next().unwrap().clone());
+        for block_data in blocks {
+            let _never_err = blockchain.try_add(block_data.header().clone());
+        }
+        blockchain
+    }
+}
+
 impl<'a> ActiveChain<'a>
 {
     pub fn len(&self) -> u32
@@ -58,7 +71,7 @@ impl<'a> ActiveChain<'a>
     /// Get the latest block
     ///
     /// Note that there always be latest block.
-    pub fn latest_block<'b>(&'b self) -> Ref<BlockData>
+    pub fn latest_block<'b>(&'b self) -> Ref<'b, BlockData>
     {
         self.iter().rev().next().unwrap()
     }
@@ -162,9 +175,9 @@ impl BlockChain
     }
 
     // Returns last common `Node` between `active_chain` and `node_ptr`'s branch.
-    fn borrow_then_find_last_common(&self, node_ptr: &Arc<RefCell<Node>>) -> Arc<RefCell<Node>>
+    fn borrow_then_find_last_common(&self, node_ptr: &Rc<RefCell<Node>>) -> Rc<RefCell<Node>>
     {
-        fn inner(active_chain: ActiveChain, node_ptr: &Arc<RefCell<Node>>) -> Arc<RefCell<Node>>
+        fn inner(active_chain: ActiveChain, node_ptr: &Rc<RefCell<Node>>) -> Rc<RefCell<Node>>
         {
             let node = node_ptr.borrow();
             if active_chain.contains(&node.block) {
@@ -192,12 +205,12 @@ impl BlockChain
     /// Append nodes of given `node_ptr`'s branch.
     /// # Note
     /// The last active node **MUST** be on `node_ptr`'s branch.
-    fn borrow_then_append_nodes(&mut self, node_ptr: Arc<RefCell<Node>>)
+    fn borrow_then_append_nodes(&mut self, node_ptr: Rc<RefCell<Node>>)
     {
         match Node::borrow_then_get_prev(&node_ptr) {
             None => panic!("node_ptr must have prev node"),
             Some(prev_node) => {
-                if !Arc::ptr_eq(&prev_node, self.active_nodes.last().unwrap()) {
+                if !Rc::ptr_eq(&prev_node, self.active_nodes.last().unwrap()) {
                     self.borrow_then_append_nodes(prev_node);
                 }
                 // Now, `prev_node == active_chain.back().unwrap()`
@@ -208,9 +221,9 @@ impl BlockChain
 
     /// Find a block whose bitcoin_hash is equal to given hash
     /// Depth first search.
-    fn borrow_then_find_node(&self, hash: Sha256dHash) -> Option<Arc<RefCell<Node>>>
+    fn borrow_then_find_node(&self, hash: Sha256dHash) -> Option<Rc<RefCell<Node>>>
     {
-        fn inner(node_ptr: &Arc<RefCell<Node>>, hash: Sha256dHash) -> Option<Arc<RefCell<Node>>>
+        fn inner(node_ptr: &Rc<RefCell<Node>>, hash: Sha256dHash) -> Option<Rc<RefCell<Node>>>
         {
             let node = node_ptr.borrow();
 
@@ -246,40 +259,40 @@ impl BlockChain
 struct Node
 {
     prev: Weak<RefCell<Node>>,
-    nexts: Vec<Arc<RefCell<Node>>>,
+    nexts: Vec<Rc<RefCell<Node>>>,
     block: BlockData,
 }
 
 impl Node
 {
-    fn new(block: BlockData) -> Arc<RefCell<Node>>
+    fn new(block: BlockData) -> Rc<RefCell<Node>>
     {
         let new_node = Node {
             prev: Weak::new(),
             nexts: vec![],
             block,
         };
-        Arc::new(RefCell::new(new_node))
+        Rc::new(RefCell::new(new_node))
     }
 
     /// # Note
     /// Inside this function, `node.borrow_mut()` is called.
     /// So caller **MUTS** take care of not calling `node.borrow_mut()` in parent scope.
-    fn borrow_mut_then_append_block(node: &Arc<RefCell<Node>>, block: BlockData) -> Arc<RefCell<Node>>
+    fn borrow_mut_then_append_block(node: &Rc<RefCell<Node>>, block: BlockData) -> Rc<RefCell<Node>>
     {
         let new_node = Node {
-            prev: Arc::downgrade(node),
+            prev: Rc::downgrade(node),
             nexts: vec![],
             block,
         };
-        let new_node_ptr = Arc::new(RefCell::new(new_node));
+        let new_node_ptr = Rc::new(RefCell::new(new_node));
 
         node.borrow_mut().nexts.push(new_node_ptr.clone());
 
         new_node_ptr
     }
 
-    fn borrow_then_get_prev(node: &Arc<RefCell<Node>>) -> Option<Arc<RefCell<Node>>>
+    fn borrow_then_get_prev(node: &Rc<RefCell<Node>>) -> Option<Rc<RefCell<Node>>>
     {
         node.borrow().prev.upgrade()
     }
