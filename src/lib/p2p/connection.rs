@@ -41,7 +41,7 @@ pub struct BlockResponse(pub Block);
 /// This message corresponds to `getheaders` message in bitcoin protocol.
 pub struct GetHeadersRequest
 {
-    pub msg: GetHeadersMessage,
+    pub locator_hashes: Vec<Sha256dHash>,
     pub addr: Recipient<HeadersResponse>,
 }
 
@@ -338,7 +338,8 @@ impl Handler<GetHeadersRequest> for Connection
         }
 
         // Send GetHeaders message to peer
-        let msg = NetworkMessage::GetHeaders(req.msg);
+        let getheaders = GetHeadersMessage::new(req.locator_hashes, Sha256dHash::default());
+        let msg = NetworkMessage::GetHeaders(getheaders);
         self.send_p2p_msg(msg, ctx);
 
         let waiting_headers = WaitingHeaders { addr: req.addr };
