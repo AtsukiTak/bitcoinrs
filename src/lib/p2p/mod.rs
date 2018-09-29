@@ -1,8 +1,10 @@
 mod socket;
 mod connection;
+mod sync_blockchain;
 
-pub use self::socket::{HandshakedSocket, Socket, begin_handshake};
+pub use self::socket::{begin_handshake, HandshakedSocket, Socket};
 pub use self::connection::Connection;
+pub use self::sync_blockchain::{SyncBlockChain, SyncBlockChainResult};
 
 pub mod msg
 {
