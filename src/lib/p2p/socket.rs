@@ -1,4 +1,4 @@
-use std::{io::Cursor, time::{SystemTime, UNIX_EPOCH}};
+use std::{io::Cursor, net::SocketAddr, time::{SystemTime, UNIX_EPOCH}};
 use bitcoin::network::{address::Address, constants::{Network, PROTOCOL_VERSION}, encodable::ConsensusDecodable,
                        message::{CommandString, NetworkMessage, RawNetworkMessage}, message_network::VersionMessage,
                        serialize::{serialize, Error as BitcoinSerializeError, RawDecoder}};
@@ -22,6 +22,16 @@ pub struct Socket<S>
 
 #[derive(Debug)]
 pub struct HandshakedSocket<S>(Socket<S>);
+
+impl Socket<TcpStream>
+{
+    pub fn connect(addr: &SocketAddr, network: Network) -> impl Future<Item = Self, Error = Error>
+    {
+        TcpStream::connect(addr)
+            .map(move |socket| Socket::new(socket, network))
+            .map_err(|e| Error::from(e))
+    }
+}
 
 impl<S> Socket<S>
 {
