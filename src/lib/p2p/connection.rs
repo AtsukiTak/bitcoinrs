@@ -6,14 +6,13 @@ use bitcoin::blockdata::block::{Block, LoneBlockHeader};
 use bitcoin::util::hash::Sha256dHash;
 use bitcoin::BitcoinHash;
 
-use futures::{Future, Stream};
+use futures::{Future, Stream, sync::oneshot};
 use tokio::{io::WriteHalf, net::TcpStream};
-use actix::{prelude::*, msgs::StartActor};
+use actix::{msgs::StartActor, prelude::*};
 
 use p2p::HandshakedSocket;
 use error::Error;
 
-const DEFAULT_ADDRS_CAPACITY: usize = 8;
 const SEND_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Message, Debug)]
@@ -62,6 +61,11 @@ pub struct SubscribeInv
 pub struct PublishInv(pub Vec<Inventory>);
 
 #[derive(Message)]
+#[rtype(result = "Result<Vec<(u32, Address)>, oneshot::Canceled>")]
+/// This message corresponds to `getaddr` message in bitcoin protocol.
+pub struct GetAddrsRequest();
+
+#[derive(Message)]
 /// Force to gracefully shutdown connection.
 pub struct Disconnect();
 
@@ -79,8 +83,7 @@ pub struct Connection
     waiting_blocks: Option<WaitingBlocks>,
     waiting_headers: Option<WaitingHeaders>,
     subscribe_invs: Option<Recipient<PublishInv>>,
-
-    addrs: Vec<(u32, Address)>,
+    waiting_addrs: Option<oneshot::Sender<Vec<(u32, Address)>>>,
 }
 
 impl Actor for Connection
@@ -123,8 +126,7 @@ impl Connection
             waiting_blocks: None,
             waiting_headers: None,
             subscribe_invs: None,
-
-            addrs: Vec::new(),
+            waiting_addrs: None,
         }
     }
 
@@ -206,41 +208,38 @@ impl Connection
 
     fn handle_addr_msg(&mut self, addrs: Vec<(u32, Address)>, _ctx: &mut Context<Self>)
     {
-        self.addrs.extend_from_slice(&addrs[..]);
-        self.addrs.drain(..DEFAULT_ADDRS_CAPACITY);
+        if let Some(sender) = self.waiting_addrs.take() {
+            let _ = sender.send(addrs); // Does not care if it fail
+        } else {
+            debug!("Discard Addr msg");
+        }
     }
 
     fn handle_block_msg(&mut self, block: Block, ctx: &mut Context<Connection>)
     {
-        let maybe_waiting_blocks = self.waiting_blocks.take();
-        match maybe_waiting_blocks {
-            None => {
-                self.stop_misbehaving_connection(ctx);
-            },
-            Some(mut waiting) => {
-                let block_hash = block.bitcoin_hash();
-                let maybe_idx = waiting.block_hashes.iter().position(|h| *h == block_hash);
-                match maybe_idx {
-                    None => {
-                        self.stop_misbehaving_connection(ctx);
-                        return;
-                    },
-                    Some(idx) => waiting.block_hashes.remove(idx),
-                };
-                let send_f = waiting.addr.send(BlockResponse(block)).timeout(SEND_TIMEOUT);
-                let f = send_f
-                    .map(move |()| waiting)
-                    .into_actor(self)
-                    .map(|waiting, actor, _ctx| {
-                        if !waiting.block_hashes.is_empty() {
-                            actor.waiting_blocks = Some(waiting);
-                        }
-                    })
-                    .map_err(|e, _actor, _ctx| {
-                        debug!("Fail to send msg : {:?}", e);
-                    });
-                ctx.wait(f);
-            },
+        if let Some(mut waiting) = self.waiting_blocks.take() {
+            let block_hash = block.bitcoin_hash();
+            let maybe_idx = waiting.block_hashes.iter().position(|h| *h == block_hash);
+            match maybe_idx {
+                None => {
+                    self.stop_misbehaving_connection(ctx);
+                    return;
+                },
+                Some(idx) => waiting.block_hashes.remove(idx),
+            };
+            let send_f = waiting.addr.send(BlockResponse(block)).timeout(SEND_TIMEOUT);
+            let f = send_f
+                .map(move |()| waiting)
+                .into_actor(self)
+                .map(|waiting, actor, _ctx| {
+                    if !waiting.block_hashes.is_empty() {
+                        actor.waiting_blocks = Some(waiting);
+                    }
+                })
+                .map_err(|e, _actor, _ctx| {
+                    debug!("Fail to send msg : {:?}", e);
+                });
+            ctx.wait(f);
         }
     }
 
@@ -344,5 +343,30 @@ impl Handler<GetHeadersRequest> for Connection
 
         let waiting_headers = WaitingHeaders { addr: req.addr };
         self.waiting_headers = Some(waiting_headers);
+    }
+}
+
+/* Handle GetAddrsRequest */
+
+impl Handler<GetAddrsRequest> for Connection
+{
+    type Result = ResponseFuture<Vec<(u32, Address)>, oneshot::Canceled>;
+
+    fn handle(
+        &mut self,
+        _req: GetAddrsRequest,
+        ctx: &mut Context<Self>,
+    ) -> ResponseFuture<Vec<(u32, Address)>, oneshot::Canceled>
+    {
+        if self.waiting_addrs.is_some() {
+            info!("Can not request GetAddrsRequest in parallel. A new request is dropped.");
+        }
+
+        let msg = NetworkMessage::GetAddr;
+        self.send_p2p_msg(msg, ctx);
+
+        let (tx, rx) = oneshot::channel();
+        self.waiting_addrs = Some(tx);
+        Box::new(rx)
     }
 }

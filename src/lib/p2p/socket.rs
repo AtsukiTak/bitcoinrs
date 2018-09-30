@@ -25,11 +25,28 @@ pub struct HandshakedSocket<S>(Socket<S>);
 
 impl Socket<TcpStream>
 {
+    /// Convenient function to create a new Tcp Socket
     pub fn connect(addr: &SocketAddr, network: Network) -> impl Future<Item = Self, Error = Error>
     {
         TcpStream::connect(addr)
             .map(move |socket| Socket::new(socket, network))
             .map_err(|e| Error::from(e))
+    }
+
+    pub fn begin_handshake(
+        self,
+        start_height: i32,
+        services: u64,
+        relay: bool,
+    ) -> impl Future<Item = HandshakedSocket<TcpStream>, Error = Error>
+    {
+        begin_handshake(self, start_height, services, relay)
+    }
+
+    // TODO
+    pub fn reply_handshake(self) -> Result<HandshakedSocket<TcpStream>, Error>
+    {
+        unimplemented!();
     }
 }
 
@@ -110,25 +127,6 @@ impl<S> Socket<S>
     where S: AsyncRead
     {
         ::futures::stream::unfold(self, |s| Some(s.recv_msg()))
-    }
-}
-
-impl Socket<TcpStream>
-{
-    pub fn begin_handshake(
-        self,
-        start_height: i32,
-        services: u64,
-        relay: bool,
-    ) -> impl Future<Item = HandshakedSocket<TcpStream>, Error = Error>
-    {
-        begin_handshake(self, start_height, services, relay)
-    }
-
-    // TODO
-    pub fn reply_handshake(self) -> Result<HandshakedSocket<TcpStream>, Error>
-    {
-        unimplemented!();
     }
 }
 
