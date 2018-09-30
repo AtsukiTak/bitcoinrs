@@ -1,7 +1,8 @@
 use actix::prelude::*;
+use futures::Future;
 
 use blockchain::BlockChain;
-use p2p::{Connection, msg::{HeadersResponse, Disconnect, GetHeadersRequest}};
+use p2p::{Connection, msg::{Disconnect, GetHeadersRequest, HeadersResponse}};
 
 const NUM_MAX_HEADERS_IN_MSG: usize = 2000;
 
@@ -60,22 +61,36 @@ impl SyncBlockChain
         let addr = ctx.address().recipient();
         let req = GetHeadersRequest { locator_hashes, addr };
 
-        // TODO
-        self.connection.try_send(req).unwrap();
+        let f = self.connection
+            .send(req)
+            .map_err(|_e| debug!("Connection is already dropped"))
+            .into_actor(self);
+        // Stop task processing until successfully send a request
+        ctx.wait(f);
     }
 
-    fn notify_err(&mut self, _ctx: &mut Context<Self>)
+    /// Send error message and then stop actor.
+    fn notify_err(&mut self, ctx: &mut Context<Self>)
     {
         let res = SyncBlockChainResult::Error(self.blockchain.take().unwrap());
-        // TODO
-        self.notify.do_send(res);
+        let f = self.notify
+            .send(res)
+            .map_err(|_e| debug!("Caller already dropped"))
+            .into_actor(self)
+            .map(|(), _actor, ctx| ctx.stop());
+        ctx.wait(f);
     }
 
-    fn notify_complete(&mut self, _ctx: &mut Context<Self>)
+    /// Send complete message and then stop actor.
+    fn notify_complete(&mut self, ctx: &mut Context<Self>)
     {
         let res = SyncBlockChainResult::Complete(self.blockchain.take().unwrap());
-        // TODO
-        self.notify.do_send(res);
+        let f = self.notify
+            .send(res)
+            .map_err(|_e| debug!("Caller already dropped"))
+            .into_actor(self)
+            .map(|(), _actor, ctx| ctx.stop());
+        ctx.wait(f);
     }
 }
 
@@ -94,15 +109,15 @@ impl Handler<HeadersResponse> for SyncBlockChain
     type Result = ();
     fn handle(&mut self, msg: HeadersResponse, ctx: &mut Context<Self>)
     {
-        let f_finish = msg.0.len() == NUM_MAX_HEADERS_IN_MSG;
+        let is_finish = msg.0.len() == NUM_MAX_HEADERS_IN_MSG;
         for lone_header in msg.0 {
             if let Err(_e) = self.blockchain_mut().try_add(lone_header.header) {
                 info!("Peer sends invalid block header. Disconnect");
                 self.connection.do_send(Disconnect());
-                self.notify_err(ctx);
+                return self.notify_err(ctx);
             }
         }
-        if f_finish {
+        if is_finish {
             self.notify_complete(ctx);
         } else {
             self.request_getheaders(ctx);
