@@ -107,6 +107,14 @@ impl<'a> ActiveChain<'a>
             .map(|node| Ref::map(node.as_ref().borrow(), |n| &n.block))
     }
 
+    pub fn into_vec(&self) -> Vec<BlockData>
+    {
+        let mut vec = Vec::with_capacity(self.nodes.len());
+        for block in self.iter() {
+            vec.push(block.clone());
+        }
+        vec
+    }
 
     /// Get locator block's hash iterator.
     ///
