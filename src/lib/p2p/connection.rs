@@ -6,7 +6,7 @@ use bitcoin::blockdata::block::{Block, LoneBlockHeader};
 use bitcoin::util::hash::Sha256dHash;
 use bitcoin::BitcoinHash;
 
-use futures::{Future, Stream, sync::oneshot};
+use futures::{Future, Stream};
 use tokio::{io::WriteHalf, net::TcpStream};
 use actix::{msgs::StartActor, prelude::*};
 
@@ -61,9 +61,14 @@ pub struct SubscribeInv
 pub struct PublishInv(pub Vec<Inventory>);
 
 #[derive(Message)]
-#[rtype(result = "Result<Vec<(u32, Address)>, oneshot::Canceled>")]
 /// This message corresponds to `getaddr` message in bitcoin protocol.
-pub struct GetAddrsRequest();
+pub struct GetAddrsRequest
+{
+    pub addr: Recipient<AddrsResponse>,
+}
+
+#[derive(Message)]
+pub struct AddrsResponse(Vec<(u32, Address)>);
 
 #[derive(Message)]
 /// Force to gracefully shutdown connection.
@@ -83,7 +88,7 @@ pub struct Connection
     waiting_blocks: Option<WaitingBlocks>,
     waiting_headers: Option<WaitingHeaders>,
     subscribe_invs: Option<Recipient<PublishInv>>,
-    waiting_addrs: Option<oneshot::Sender<Vec<(u32, Address)>>>,
+    waiting_addrs: Option<Recipient<AddrsResponse>>,
 }
 
 impl Actor for Connection
@@ -206,10 +211,15 @@ impl Connection
         ctx.stop();
     }
 
-    fn handle_addr_msg(&mut self, addrs: Vec<(u32, Address)>, _ctx: &mut Context<Self>)
+    fn handle_addr_msg(&mut self, addrs: Vec<(u32, Address)>, ctx: &mut Context<Self>)
     {
         if let Some(sender) = self.waiting_addrs.take() {
-            let _ = sender.send(addrs); // Does not care if it fail
+            let f = sender
+                .send(AddrsResponse(addrs))
+                .timeout(SEND_TIMEOUT)
+                .map_err(|_e| ())
+                .into_actor(self);
+            let _ = ctx.spawn(f);
         } else {
             debug!("Discard Addr msg");
         }
@@ -228,36 +238,28 @@ impl Connection
                 Some(idx) => waiting.block_hashes.remove(idx),
             };
             let send_f = waiting.addr.send(BlockResponse(block)).timeout(SEND_TIMEOUT);
-            let f = send_f
-                .map(move |()| waiting)
-                .into_actor(self)
-                .map(|waiting, actor, _ctx| {
-                    if !waiting.block_hashes.is_empty() {
-                        actor.waiting_blocks = Some(waiting);
-                    }
-                })
-                .map_err(|e, _actor, _ctx| {
-                    debug!("Fail to send msg : {:?}", e);
-                });
-            ctx.wait(f);
+            let f = send_f.into_actor(self).map_err(|e, _actor, _ctx| {
+                debug!("Fail to send msg : {:?}", e);
+            });
+            let _ = ctx.spawn(f);
+
+            if !waiting.block_hashes.is_empty() {
+                self.waiting_blocks = Some(waiting);
+            }
         }
     }
 
     fn handle_invs_msg(&mut self, invs: Vec<Inventory>, ctx: &mut Context<Self>)
     {
-        let maybe_subscriber = self.subscribe_invs.take();
-        if let Some(subscriber) = maybe_subscriber {
+        if let Some(ref subscriber) = self.subscribe_invs.as_ref() {
             let send_f = subscriber.send(PublishInv(invs)).timeout(SEND_TIMEOUT);
             let f = send_f
-                .map(move |_| subscriber)
                 .into_actor(self)
-                .map(|subscriber, actor, _ctx| {
-                    actor.subscribe_invs = Some(subscriber);
-                })
-                .map_err(|e, _actor, _ctx| {
+                .map_err(|e, actor, _ctx| {
                     debug!("Fail to send msg : {:?}", e);
+                    actor.subscribe_invs = None;
                 });
-            ctx.wait(f);
+            ctx.spawn(f);
         } else {
             debug!("Peer sends Inv message but no subscriber is set, so discard it.");
         }
@@ -350,13 +352,9 @@ impl Handler<GetHeadersRequest> for Connection
 
 impl Handler<GetAddrsRequest> for Connection
 {
-    type Result = ResponseFuture<Vec<(u32, Address)>, oneshot::Canceled>;
+    type Result = ();
 
-    fn handle(
-        &mut self,
-        _req: GetAddrsRequest,
-        ctx: &mut Context<Self>,
-    ) -> ResponseFuture<Vec<(u32, Address)>, oneshot::Canceled>
+    fn handle(&mut self, req: GetAddrsRequest, ctx: &mut Context<Self>)
     {
         if self.waiting_addrs.is_some() {
             info!("Can not request GetAddrsRequest in parallel. A new request is dropped.");
@@ -365,8 +363,6 @@ impl Handler<GetAddrsRequest> for Connection
         let msg = NetworkMessage::GetAddr;
         self.send_p2p_msg(msg, ctx);
 
-        let (tx, rx) = oneshot::channel();
-        self.waiting_addrs = Some(tx);
-        Box::new(rx)
+        self.waiting_addrs = Some(req.addr);
     }
 }
