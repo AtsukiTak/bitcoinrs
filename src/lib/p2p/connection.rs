@@ -21,7 +21,7 @@ pub struct P2PMessage(NetworkMessage);
 #[derive(Message)]
 /// This message corresponds to `getdata` message in bitcoin protocol.
 /// If peer does not have requested block data, peer does not respond anything.
-/// Bitcoin core implementation is that it wait up to two seconds and then disconnect.
+/// In Bitcoin core implementation, it wait up to two seconds and then disconnect.
 pub struct GetBlocksRequest
 {
     pub block_hashes: Vec<Sha256dHash>,
@@ -30,7 +30,7 @@ pub struct GetBlocksRequest
 
 #[derive(Message)]
 /// A response message to GetBlocksRequest.
-/// Sender probably receive same number of `BlockResponse` with request hashes..
+/// Sender probably receive same number of `BlockResponse` with request hashes.
 /// But sometime that number is less (see `GetBlocksRequest` document).
 /// Sender **SHOULD** set timeout.
 /// 2 seconds are recommended.
@@ -112,7 +112,7 @@ impl Connection
         arbiter.send(start_actor).wait()
     }
 
-    fn create(socket: HandshakedSocket<TcpStream>, ctx: &mut Context<Self>) -> Connection
+    pub fn create(socket: HandshakedSocket<TcpStream>, ctx: &mut Context<Self>) -> Connection
     {
         let (read_socket, write_socket) = socket.split();
 
