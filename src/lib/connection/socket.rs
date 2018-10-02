@@ -8,8 +8,9 @@ use futures::{Future, IntoFuture, Sink, Stream};
 use tokio::{codec::{Encoder, FramedWrite}, io::{shutdown, AsyncRead, AsyncWrite, ReadHalf, Shutdown, WriteHalf},
             net::TcpStream};
 use bytes::BytesMut;
+use failure::Error;
 
-use error::{Error, ErrorKind};
+use connection::error::ConnectionError;
 
 pub const USER_AGENT: &str = "bitcoinrs v0.0";
 
@@ -186,7 +187,7 @@ pub fn begin_handshake(
                 NetworkMessage::Version(v) => Ok((v, socket)),
                 msg => {
                     info!("Fail to handshake. Expect Version msg but found {:?}", msg);
-                    Err(Error::from(ErrorKind::MisbehavePeer))
+                    bail!(ConnectionError::MisbehavePeer);
                 },
             }
         })
@@ -198,7 +199,7 @@ pub fn begin_handshake(
                 NetworkMessage::Verack => Ok(HandshakedSocket(socket)),
                 msg => {
                     info!("Fail to handshake. Expect Verack msg but found {:?}", msg);
-                    Err(Error::from(ErrorKind::MisbehavePeer))
+                    bail!(ConnectionError::MisbehavePeer);
                 },
             }
         })

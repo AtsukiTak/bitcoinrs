@@ -9,9 +9,10 @@ extern crate actix;
 #[macro_use]
 extern crate log;
 #[macro_use]
-extern crate error_chain;
+extern crate failure;
+#[macro_use]
+extern crate failure_derive;
 
 pub mod connection;
 pub mod blockchain;
 pub mod process;
-pub mod error;
