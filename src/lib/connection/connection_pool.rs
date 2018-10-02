@@ -7,7 +7,7 @@ use bitcoin::network::constants::Network;
 use rand::{FromEntropy, RngCore, XorShiftRng, seq::sample_iter};
 
 use blockchain::BlockChain;
-use p2p::{connection::{AddrsResponse, Connection, Disconnect, GetAddrsRequest}, socket::Socket};
+use connection::{socket::Socket, {AddrsResponse, Connection, Disconnect, GetAddrsRequest}};
 
 pub const DEFAULT_WATER_LINE: usize = 8;
 pub const ADDR_POOL_SIZE: usize = 64;

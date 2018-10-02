@@ -10,7 +10,7 @@ use futures::{Future, Stream};
 use tokio::{io::WriteHalf, net::TcpStream};
 use actix::{msgs::StartActor, prelude::*};
 
-use p2p::socket::HandshakedSocket;
+use connection::socket::HandshakedSocket;
 use error::Error;
 
 const SEND_TIMEOUT: Duration = Duration::from_secs(2);

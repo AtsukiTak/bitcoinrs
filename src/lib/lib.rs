@@ -11,6 +11,7 @@ extern crate log;
 #[macro_use]
 extern crate error_chain;
 
-pub mod p2p;
+pub mod connection;
 pub mod blockchain;
+pub mod process;
 pub mod error;

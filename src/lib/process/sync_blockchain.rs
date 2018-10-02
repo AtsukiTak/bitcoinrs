@@ -2,7 +2,7 @@ use actix::prelude::*;
 use futures::Future;
 
 use blockchain::BlockChain;
-use p2p::connection::{Connection, Disconnect, GetHeadersRequest, HeadersResponse};
+use connection::{Connection, Disconnect, GetHeadersRequest, HeadersResponse};
 
 const NUM_MAX_HEADERS_IN_MSG: usize = 2000;
 
