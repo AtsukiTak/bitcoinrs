@@ -10,7 +10,7 @@ use futures::{Future, Stream};
 use tokio::{io::WriteHalf, net::TcpStream};
 use actix::{msgs::StartActor, prelude::*};
 
-use p2p::HandshakedSocket;
+use p2p::socket::HandshakedSocket;
 use error::Error;
 
 const SEND_TIMEOUT: Duration = Duration::from_secs(2);
@@ -68,7 +68,7 @@ pub struct GetAddrsRequest
 }
 
 #[derive(Message)]
-pub struct AddrsResponse(Vec<(u32, Address)>);
+pub struct AddrsResponse(pub Vec<(u32, Address)>);
 
 #[derive(Message)]
 /// Force to gracefully shutdown connection.
@@ -253,12 +253,10 @@ impl Connection
     {
         if let Some(ref subscriber) = self.subscribe_invs.as_ref() {
             let send_f = subscriber.send(PublishInv(invs)).timeout(SEND_TIMEOUT);
-            let f = send_f
-                .into_actor(self)
-                .map_err(|e, actor, _ctx| {
-                    debug!("Fail to send msg : {:?}", e);
-                    actor.subscribe_invs = None;
-                });
+            let f = send_f.into_actor(self).map_err(|e, actor, _ctx| {
+                debug!("Fail to send msg : {:?}", e);
+                actor.subscribe_invs = None;
+            });
             ctx.spawn(f);
         } else {
             debug!("Peer sends Inv message but no subscriber is set, so discard it.");
