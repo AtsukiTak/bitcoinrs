@@ -7,7 +7,7 @@ use bitcoin::network::constants::Network;
 use rand::{FromEntropy, RngCore, XorShiftRng, seq::sample_iter};
 
 use blockchain::BlockChain;
-use p2p::{connection::{Connection, Disconnect, AddrsResponse, GetAddrsRequest}, socket::Socket};
+use p2p::{connection::{AddrsResponse, Connection, Disconnect, GetAddrsRequest}, socket::Socket};
 
 pub const DEFAULT_WATER_LINE: usize = 8;
 pub const ADDR_POOL_SIZE: usize = 64;
@@ -46,10 +46,11 @@ pub struct ConnectionPool
 }
 
 #[derive(Message)]
-#[rtype(result="Vec<Addr<Connection>>")]
+#[rtype(result = "Vec<Addr<Connection>>")]
 pub struct GetConnections
 {
     pub num: usize,
+    pub except: Vec<Addr<Connection>>,
 }
 
 #[derive(Message)]
@@ -196,7 +197,11 @@ impl Handler<GetConnections> for ConnectionPool
 
     fn handle(&mut self, msg: GetConnections, _ctx: &mut Context<Self>) -> MessageResult<GetConnections>
     {
-        let vec = sample_iter(&mut self.rng, self.connection_pool.iter().cloned(), msg.num).unwrap_or_else(|v| v);
+        let iter = self.connection_pool
+            .iter()
+            .filter(|addr| !msg.except.contains(addr))
+            .cloned();
+        let vec = sample_iter(&mut self.rng, iter, msg.num).unwrap_or_else(|v| v);
         MessageResult(vec)
     }
 }
@@ -205,7 +210,8 @@ impl Handler<BanConnection> for ConnectionPool
 {
     type Result = ();
 
-    fn handle(&mut self, msg: BanConnection, _ctx: &mut Context<Self>) {
+    fn handle(&mut self, msg: BanConnection, _ctx: &mut Context<Self>)
+    {
         if let Some(conn) = self.connection_pool.take(&msg.conn) {
             // Even if it fail to send Disconnect message, if all Addr are dropped, underlying
             // Connection will stop.
