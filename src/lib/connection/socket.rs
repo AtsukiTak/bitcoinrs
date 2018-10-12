@@ -95,11 +95,11 @@ impl<S> Socket<S>
         FramedWrite::new(socket, encoder)
     }
 
-    pub fn sync_send_msg<'a>(&'a self, msg: NetworkMessage) -> Result<(), Error>
-    where &'a S: Write
+    pub fn sync_send_msg(&mut self, msg: NetworkMessage) -> Result<(), Error>
+    where S: Write
     {
         let bytes = encode(msg, self.network.clone());
-        (&self.socket).write_all(bytes.as_slice())?;
+        self.socket.write_all(bytes.as_slice())?;
         Ok(())
     }
 
