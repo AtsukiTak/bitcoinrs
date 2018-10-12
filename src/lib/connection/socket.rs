@@ -1,4 +1,4 @@
-use std::{io::Cursor, net::SocketAddr, time::{SystemTime, UNIX_EPOCH}};
+use std::{io::{Cursor, Write}, net::SocketAddr, time::{SystemTime, UNIX_EPOCH}};
 use bitcoin::network::{address::Address, constants::{Network, PROTOCOL_VERSION}, encodable::ConsensusDecodable,
                        message::{CommandString, NetworkMessage, RawNetworkMessage}, message_network::VersionMessage,
                        serialize::{serialize, Error as BitcoinSerializeError, RawDecoder}};
@@ -93,6 +93,14 @@ impl<S> Socket<S>
         let (socket, network) = self.breakdown();
         let encoder = BtcEncoder { network };
         FramedWrite::new(socket, encoder)
+    }
+
+    pub fn sync_send_msg<'a>(&'a self, msg: NetworkMessage) -> Result<(), Error>
+    where &'a S: Write
+    {
+        let bytes = encode(msg, self.network.clone());
+        (&self.socket).write_all(bytes.as_slice())?;
+        Ok(())
     }
 
     pub fn recv_msg(self) -> impl Future<Item = (NetworkMessage, Self), Error = Error>
