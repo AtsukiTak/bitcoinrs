@@ -21,9 +21,6 @@ pub struct Socket<S>
     network: Network,
 }
 
-#[derive(Debug)]
-pub struct HandshakedSocket<S>(Socket<S>);
-
 impl Socket<TcpStream>
 {
     /// Convenient function to create a new Tcp Socket
@@ -39,13 +36,13 @@ impl Socket<TcpStream>
         start_height: i32,
         services: u64,
         relay: bool,
-    ) -> impl Future<Item = HandshakedSocket<TcpStream>, Error = Error>
+    ) -> impl Future<Item = Socket<TcpStream>, Error = Error>
     {
         begin_handshake(self, start_height, services, relay)
     }
 
     // TODO
-    pub fn reply_handshake(self) -> Result<HandshakedSocket<TcpStream>, Error>
+    pub fn reply_handshake(self) -> Result<Socket<TcpStream>, Error>
     {
         unimplemented!();
     }
@@ -131,52 +128,12 @@ impl<S> Socket<S>
     }
 }
 
-impl<S> HandshakedSocket<S>
-{
-    pub fn split(self) -> (HandshakedSocket<ReadHalf<S>>, HandshakedSocket<WriteHalf<S>>)
-    where S: AsyncRead + AsyncWrite
-    {
-        let (r, w) = self.0.split();
-        (HandshakedSocket(r), HandshakedSocket(w))
-    }
-
-    pub fn shutdown(self) -> Shutdown<S>
-    where S: AsyncWrite
-    {
-        self.0.shutdown()
-    }
-
-    pub fn send_msg(self, msg: NetworkMessage) -> impl Future<Item = Self, Error = Error>
-    where S: AsyncWrite
-    {
-        self.0.send_msg(msg).map(|s| HandshakedSocket(s))
-    }
-
-    pub fn send_msg_sink(self) -> impl Sink<SinkItem = NetworkMessage, SinkError = Error>
-    where S: AsyncWrite
-    {
-        self.0.send_msg_sink()
-    }
-
-    pub fn recv_msg(self) -> impl Future<Item = (NetworkMessage, Self), Error = Error>
-    where S: AsyncRead
-    {
-        self.0.recv_msg().map(|(msg, socket)| (msg, HandshakedSocket(socket)))
-    }
-
-    pub fn recv_msg_stream(self) -> impl Stream<Item = NetworkMessage, Error = Error>
-    where S: AsyncRead
-    {
-        self.0.recv_msg_stream()
-    }
-}
-
 pub fn begin_handshake(
     socket: Socket<TcpStream>,
     start_height: i32,
     services: u64,
     relay: bool,
-) -> impl Future<Item = HandshakedSocket<TcpStream>, Error = Error>
+) -> impl Future<Item = Socket<TcpStream>, Error = Error>
 {
     version_msg(&socket.socket, start_height, services, relay)
         .into_future()
@@ -196,7 +153,7 @@ pub fn begin_handshake(
         .and_then(|socket| socket.recv_msg())
         .and_then(|(msg, socket)| {
             match msg {
-                NetworkMessage::Verack => Ok(HandshakedSocket(socket)),
+                NetworkMessage::Verack => Ok(socket),
                 msg => {
                     info!("Fail to handshake. Expect Verack msg but found {:?}", msg);
                     bail!(ConnectionError::MisbehavePeer);

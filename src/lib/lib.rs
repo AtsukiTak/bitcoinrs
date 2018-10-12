@@ -15,4 +15,3 @@ extern crate failure_derive;
 
 pub mod connection;
 pub mod blockchain;
-pub mod process;
