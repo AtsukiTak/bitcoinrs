@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use futures::{Stream, sync::oneshot::{self, SpawnHandle}};
+use futures::{Stream, future::{result, Future}, sync::oneshot::{self, SpawnHandle}};
 use tokio::{io::{ReadHalf, WriteHalf}, net::TcpStream, runtime::TaskExecutor};
 use bitcoin::network::{message::NetworkMessage, message_blockdata::GetHeadersMessage};
 use bitcoin::blockdata::block::LoneBlockHeader;
@@ -32,18 +32,22 @@ impl Connection
         }
     }
 
-    pub fn getheaders(&self, locator_hashes: Vec<Sha256dHash>)
-        -> Result<oneshot::Receiver<Vec<LoneBlockHeader>>, Error>
+    pub fn getheaders(
+        self,
+        locator_hashes: Vec<Sha256dHash>,
+    ) -> impl Future<Item = (Vec<LoneBlockHeader>, Self), Error = Error>
     {
         let (tx, rx) = oneshot::channel();
         let getheaders = GetHeadersMessage::new(locator_hashes, Sha256dHash::default());
         let msg = NetworkMessage::GetHeaders(getheaders);
-        {
+        let send_result = {
             let mut inner = self.inner.lock().unwrap();
-            inner.send_p2p_msg(msg)?;
             inner.waiting_headers = Some(tx);
-        }
-        Ok(rx)
+            inner.send_p2p_msg(msg)
+        };
+        result(send_result)
+            .and_then(|()| rx.map_err(|e| Error::from(e)))
+            .map(move |headers| (headers, self))
     }
 }
 

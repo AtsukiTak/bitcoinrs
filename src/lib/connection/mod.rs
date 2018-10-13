@@ -1,6 +1,7 @@
 mod error;
 
 pub mod socket;
-pub mod connection;
+mod connection;
 
+pub use self::connection::Connection;
 pub use self::error::ConnectionError;
